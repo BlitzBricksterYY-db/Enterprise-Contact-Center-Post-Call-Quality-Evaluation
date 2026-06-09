@@ -1,16 +1,16 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Higher Education Advisory Services — 01 Setup
+# MAGIC # Enterprise Contact Center — 01 Setup
 # MAGIC
-# MAGIC Creates the schema, Delta tables, rubric data, and registers **all 12 Unity Catalog
-# MAGIC SQL functions** that power the AI Advisory Services agent.
+# MAGIC Creates the schema, Delta tables, QA rubric data, and registers **Unity Catalog
+# MAGIC SQL functions** that power the post-call quality evaluation agent.
 # MAGIC
 # MAGIC | Layer | Table | Description |
 # MAGIC |-------|-------|-------------|
-# MAGIC | Bronze | `bronze_audio_files` | Raw audio file metadata from Auto Loader |
-# MAGIC | Silver | `silver_transcriptions` | Whisper transcriptions with speaker diarization |
-# MAGIC | Gold | `gold_enriched_calls` | Sentiment, topics, intent, rubric scores |
-# MAGIC | Ref | `advisor_rubric` | 5-criterion weighted rubric for advisor scoring |
+# MAGIC | Bronze | `bronze_call_metadata` | Raw call file metadata + agent/queue info from Auto Loader |
+# MAGIC | Silver | `silver_transcriptions` | Whisper transcriptions with call metadata |
+# MAGIC | Gold | `gold_qa_evaluations` | QA scores, compliance flags, sentiment, coaching notes |
+# MAGIC | Ref | `qa_rubric` | 5-criterion weighted QA checklist for agent scoring |
 
 # COMMAND ----------
 
@@ -18,8 +18,8 @@
 
 # -- Parameterized configuration: override via widgets or job parameters --
 dbutils.widgets.text("catalog", "chada_demos", "Unity Catalog")
-dbutils.widgets.text("schema", "higher_ed_advisory", "Schema")
-dbutils.widgets.text("volume_path", "/Volumes/chada_demos/pubsec_demos/audio", "Audio Volume Path")
+dbutils.widgets.text("schema", "contact_center_qa", "Schema")
+dbutils.widgets.text("volume_path", "/Volumes/chada_demos/contact_center_qa/call_recordings", "Call Recordings Volume Path")
 dbutils.widgets.text("warehouse_id", "4b9b953939869799", "SQL Warehouse ID")
 dbutils.widgets.text("whisper_endpoint", "va_whisper_large_v3", "Whisper Model Endpoint")
 dbutils.widgets.text("llm_endpoint", "databricks-meta-llama-3-3-70b-instruct", "LLM Endpoint")
@@ -56,72 +56,81 @@ try:
 except Exception as e:
     print(f"Volume creation note: {e}")
 
-# -- Bronze: raw audio file metadata from Auto Loader --
+# -- Bronze: call metadata from Auto Loader --
 spark.sql(f"""
-CREATE TABLE IF NOT EXISTS {FQ}.bronze_audio_files (
-  filename         STRING     COMMENT 'Original filename of the audio recording',
-  file_path        STRING     COMMENT 'Full Volume path to the audio file',
-  file_size_bytes  LONG       COMMENT 'Size of the audio file in bytes',
-  modified_time    TIMESTAMP  COMMENT 'Last modification timestamp from cloud storage',
-  ingested_at      TIMESTAMP  COMMENT 'Timestamp when Auto Loader ingested the file'
+CREATE TABLE IF NOT EXISTS {FQ}.bronze_call_metadata (
+  call_id              STRING     COMMENT 'Unique call identifier',
+  filename             STRING     COMMENT 'Original filename of the recording',
+  file_path            STRING     COMMENT 'Full Volume path to the audio file',
+  agent_id             STRING     COMMENT 'Contact center agent identifier',
+  queue_type           STRING     COMMENT 'Queue/department: Sales, Support, Billing, Technical, Complaints',
+  call_duration_seconds INT       COMMENT 'Call duration in seconds',
+  call_timestamp       TIMESTAMP  COMMENT 'Timestamp when the call occurred',
+  file_size_bytes      LONG       COMMENT 'Size of the audio file in bytes',
+  ingested_at          TIMESTAMP  COMMENT 'Timestamp when Auto Loader ingested the file'
 )
 USING DELTA
-COMMENT 'Bronze layer: raw audio file metadata ingested via Auto Loader from cloud storage'
+COMMENT 'Bronze layer: raw call file metadata with agent and queue info'
 TBLPROPERTIES ('quality' = 'bronze')
 """)
 
-# -- Silver: Whisper transcriptions --
+# -- Silver: Whisper transcriptions with call metadata --
 spark.sql(f"""
 CREATE TABLE IF NOT EXISTS {FQ}.silver_transcriptions (
-  filename         STRING     COMMENT 'Original audio filename',
-  file_path        STRING     COMMENT 'Full Volume path',
-  speaker_id       STRING     COMMENT 'Extracted speaker identifier',
-  transcription    STRING     COMMENT 'Full text transcription from Whisper',
-  word_count       INT        COMMENT 'Number of words in the transcription',
-  duration_hint    STRING     COMMENT 'Estimated call duration category (short/medium/long)',
-  transcribed_at   TIMESTAMP  COMMENT 'Timestamp when transcription completed'
+  call_id              STRING     COMMENT 'Unique call identifier',
+  filename             STRING     COMMENT 'Original audio filename',
+  file_path            STRING     COMMENT 'Full Volume path',
+  agent_id             STRING     COMMENT 'Contact center agent identifier',
+  transcription        STRING     COMMENT 'Full text transcription from Whisper',
+  word_count           INT        COMMENT 'Number of words in the transcription',
+  call_duration_seconds INT       COMMENT 'Call duration in seconds',
+  transcribed_at       TIMESTAMP  COMMENT 'Timestamp when transcription completed'
 )
 USING DELTA
-COMMENT 'Silver layer: audio transcriptions produced by Whisper large-v3 endpoint'
+COMMENT 'Silver layer: call transcriptions produced by Whisper large-v3 with agent metadata'
 TBLPROPERTIES ('quality' = 'silver')
 """)
 
-# -- Gold: enriched calls with sentiment, topics, intent, rubric --
+# -- Gold: QA evaluations with per-criterion scores and compliance flags --
 spark.sql(f"""
-CREATE TABLE IF NOT EXISTS {FQ}.gold_enriched_calls (
-  filename            STRING     COMMENT 'Original audio filename',
-  file_path           STRING     COMMENT 'Full Volume path',
-  speaker_id          STRING     COMMENT 'Speaker identifier',
-  transcription       STRING     COMMENT 'Full transcription text',
-  sentiment           STRING     COMMENT 'Overall sentiment: Positive, Negative, Neutral, Mixed',
-  sentiment_confidence DOUBLE    COMMENT 'Confidence score for sentiment 0.0-1.0',
-  topics              STRING     COMMENT 'Comma-separated extracted topics',
-  intent              STRING     COMMENT 'Primary caller intent classification',
-  call_category       STRING     COMMENT 'Call type: Financial Aid, Admissions, Enrollment, Academic Advising, Other',
-  rubric_score        INT        COMMENT 'Advisor performance rubric score 1-5',
-  rubric_assessment   STRING     COMMENT 'Detailed rubric assessment narrative from RAG LLM',
-  improvement_areas   STRING     COMMENT 'Comma-separated areas for advisor improvement',
-  word_count          INT        COMMENT 'Number of words in transcript',
-  enriched_at         TIMESTAMP  COMMENT 'Timestamp when enrichment completed'
+CREATE TABLE IF NOT EXISTS {FQ}.gold_qa_evaluations (
+  call_id                STRING     COMMENT 'Unique call identifier',
+  agent_id               STRING     COMMENT 'Contact center agent identifier',
+  queue_type             STRING     COMMENT 'Queue/department',
+  transcription          STRING     COMMENT 'Full transcription text',
+  overall_qa_score       DOUBLE     COMMENT 'Weighted overall QA score 1.0-5.0',
+  greeting_score         INT        COMMENT 'Proper greeting and ID verification (1-5)',
+  empathy_score          INT        COMMENT 'Empathy markers and active listening (1-5)',
+  accuracy_score         INT        COMMENT 'Correct information provided (1-5)',
+  escalation_score       INT        COMMENT 'Escalation protocol adherence (1-5)',
+  compliance_score       INT        COMMENT 'Regulatory compliance and disclosures (1-5)',
+  sentiment              STRING     COMMENT 'Overall sentiment: Positive, Negative, Neutral, Mixed',
+  sentiment_confidence   DOUBLE     COMMENT 'Confidence score for sentiment 0.0-1.0',
+  topics                 STRING     COMMENT 'Comma-separated extracted topics',
+  call_category          STRING     COMMENT 'Call type: Sales, Support, Billing, Technical, Complaints',
+  compliance_flags       STRING     COMMENT 'JSON array of compliance violations found',
+  coaching_notes         STRING     COMMENT 'AI-generated coaching recommendations',
+  requires_human_review  BOOLEAN    COMMENT 'True if flagged as outlier needing supervisor review',
+  evaluated_at           TIMESTAMP  COMMENT 'Timestamp when evaluation completed'
 )
 USING DELTA
-COMMENT 'Gold layer: fully enriched call records with AI-derived insights for Genie discovery'
+COMMENT 'Gold layer: QA evaluation results with per-criterion scores, compliance flags, and coaching notes'
 TBLPROPERTIES ('quality' = 'gold')
 """)
 
-# -- Rubric reference table (for RAG context) --
+# -- QA Rubric reference table (configurable checklist) --
 spark.sql(f"""
-CREATE TABLE IF NOT EXISTS {FQ}.advisor_rubric (
+CREATE TABLE IF NOT EXISTS {FQ}.qa_rubric (
   rubric_id     INT        COMMENT 'Unique rubric criterion ID',
-  category      STRING     COMMENT 'Rubric category',
+  category      STRING     COMMENT 'QA checklist category',
   criterion     STRING     COMMENT 'Specific assessment criterion',
-  score_1_desc  STRING     COMMENT 'Description of score 1 (Poor)',
+  score_1_desc  STRING     COMMENT 'Description of score 1 (Fail)',
   score_3_desc  STRING     COMMENT 'Description of score 3 (Acceptable)',
   score_5_desc  STRING     COMMENT 'Description of score 5 (Excellent)',
-  weight        DOUBLE     COMMENT 'Weight of this criterion in overall score'
+  weight        DOUBLE     COMMENT 'Weight of this criterion in overall QA score'
 )
 USING DELTA
-COMMENT 'Reference rubric for evaluating higher-ed advisor call quality'
+COMMENT 'Configurable QA checklist rubric for evaluating contact center agent calls'
 """)
 
 print("All tables initialized.")
@@ -130,44 +139,44 @@ print("All tables initialized.")
 
 # DBTITLE 1,Seed Advisor Rubric
 
-rubric_count = spark.sql(f"SELECT count(*) AS cnt FROM {FQ}.advisor_rubric").collect()[0]["cnt"]
+rubric_count = spark.sql(f"SELECT count(*) AS cnt FROM {FQ}.qa_rubric").collect()[0]["cnt"]
 if rubric_count == 0:
     spark.sql(f"""
-    INSERT INTO {FQ}.advisor_rubric VALUES
-    (1, 'Greeting & Identification',
-        'Advisor properly identifies themselves and confirms student identity',
-        'No greeting; fails to identify student',
-        'Basic greeting; confirms name only',
-        'Warm, professional greeting; confirms name, ID, and reason for call',
+    INSERT INTO {FQ}.qa_rubric VALUES
+    (1, 'Proper Greeting & ID Verification',
+        'Agent properly greets the customer, states their name and department, and verifies customer identity',
+        'No greeting; fails to identify themselves or verify customer',
+        'Basic greeting; states name but incomplete verification',
+        'Warm, professional greeting; states name and dept; full identity verification completed',
         0.15),
-    (2, 'Active Listening',
-        'Advisor demonstrates active listening through paraphrasing and clarifying questions',
-        'Interrupts student; ignores stated concerns',
-        'Listens but does not paraphrase or confirm understanding',
-        'Paraphrases concerns, asks clarifying questions, confirms understanding',
+    (2, 'Empathy & Active Listening',
+        'Agent demonstrates empathy, validates customer feelings, paraphrases concerns, and asks clarifying questions',
+        'Dismissive or cold; interrupts customer; ignores stated concerns',
+        'Neutral tone; acknowledges concern without demonstrating empathy',
+        'Validates feelings; paraphrases concerns; asks clarifying questions; reassures customer',
         0.20),
-    (3, 'Accurate Information',
-        'Advisor provides correct policy, deadline, and procedural information',
-        'Provides incorrect information or guesses',
-        'Provides mostly correct info with minor gaps',
-        'Provides fully accurate info with citations to official policy',
+    (3, 'Accurate Information Provided',
+        'Agent provides correct, complete information including policies, procedures, and relevant details',
+        'Provides incorrect or misleading information; guesses without verification',
+        'Provides mostly correct info with minor gaps; does not cite source',
+        'Fully accurate info; cites policy or documentation; confirms customer understanding',
         0.25),
-    (4, 'Empathy & Tone',
-        'Advisor shows empathy and maintains professional, supportive tone',
-        'Dismissive or cold tone; no empathy shown',
-        'Neutral tone; acknowledges concern without empathy',
-        'Warm, empathetic; validates feelings; reassures student',
+    (4, 'Escalation Protocol Adherence',
+        'Agent correctly identifies when escalation is needed and follows proper escalation procedures',
+        'Fails to escalate when clearly needed; attempts to handle beyond authority',
+        'Recognizes need but incomplete handoff; missing warm transfer',
+        'Correctly identifies escalation triggers; follows protocol; warm transfer with context',
         0.20),
-    (5, 'Resolution & Next Steps',
-        'Advisor clearly resolves the issue or sets concrete next steps',
-        'Call ends without resolution or next steps',
-        'Partial resolution; vague follow-up',
-        'Full resolution with specific next steps, deadlines, and contact info',
+    (5, 'Compliance & Required Disclosures',
+        'Agent delivers all required regulatory disclosures and follows compliance protocols',
+        'Misses mandatory disclosures; non-compliant language used',
+        'Most disclosures given but incomplete; minor compliance gaps',
+        'All required disclosures given; regulatory language correct; proper consent obtained',
         0.20)
     """)
-    print("Rubric seeded with 5 criteria.")
+    print("QA Rubric seeded with 5 criteria.")
 else:
-    print(f"Rubric already has {rubric_count} rows -- skipping seed.")
+    print(f"QA Rubric already has {rubric_count} rows -- skipping seed.")
 
 # COMMAND ----------
 
@@ -300,15 +309,15 @@ spark.sql(f"DROP FUNCTION IF EXISTS {FQ}.classify_call_category")
 spark.sql(f"""
 CREATE FUNCTION {FQ}.classify_call_category(transcription STRING)
 RETURNS STRING
-COMMENT 'Classifies a higher-ed advisory call transcript into one category: Financial Aid, Admissions, Enrollment, Academic Advising, Registration, Housing, Billing, Career Services, or Other.'
+COMMENT 'Classifies a contact center call transcript into one category: Sales, Support, Billing, Technical, Complaints, Retention, Registration, Housing, Billing, Career Services, or Other.'
 RETURN (
   SELECT ai_query(
     '{LLM_ENDPOINT}',
     concat(
-      'You are a higher education call center analyst. Classify this advisor-student call transcript ',
+      'You are an enterprise contact center quality analyst. Classify this call transcript ',
       'into exactly ONE category from the following list:\\n',
-      '- Financial Aid\\n- Admissions\\n- Enrollment\\n- Academic Advising\\n',
-      '- Registration\\n- Housing\\n- Billing\\n- Career Services\\n- Other\\n\\n',
+      '- Sales\\n- Support\\n- Billing\\n- Technical\\n',
+      '- Complaints\\n- Retention\\n- Account Management\\n- Other\\n\\n',
       'Respond with ONLY the category name. No explanation.\\n\\nTranscript:\\n', transcription
     )
   )
@@ -372,7 +381,7 @@ spark.sql(f"DROP FUNCTION IF EXISTS {FQ}.assess_rubric_rag")
 spark.sql(f"""
 CREATE FUNCTION {FQ}.assess_rubric_rag(transcription STRING)
 RETURNS STRING
-COMMENT 'Assesses advisor performance against the advisory services rubric using RAG. Retrieves rubric criteria from the reference table and produces a weighted score (1-5) with narrative assessment.'
+COMMENT 'Assesses advisor performance against the QA checklist rubric using RAG. Retrieves rubric criteria from the qa_rubric reference table and produces a weighted score (1-5) with per-criterion scores and coaching notes.'
 RETURN (
   WITH rubric AS (
     SELECT collect_list(
@@ -383,21 +392,25 @@ RETURN (
         '  Score 5 (Excellent): ', score_5_desc
       )
     ) AS criteria
-    FROM {FQ}.advisor_rubric
+    FROM {FQ}.qa_rubric
   )
   SELECT ai_query(
     '{LLM_ENDPOINT}',
     concat(
-      'You are assessing a higher education advisor call against a quality rubric.\\n\\n',
+      'You are a contact center QA analyst evaluating an agent call against the quality checklist.\\n\\n',
       '## RUBRIC CRITERIA:\\n',
       array_join((SELECT criteria FROM rubric), '\\n\\n'),
       '\\n\\n## CALL TRANSCRIPT:\\n', transcription,
       '\\n\\n## INSTRUCTIONS:\\n',
       'Score each criterion 1-5. Then compute a single weighted overall score (round to nearest integer).\\n',
+      'Also identify any compliance violations and generate specific coaching recommendations.\\n',
       'Return ONLY a JSON object with:\\n',
       '  "overall_score": integer 1-5\\n',
-      '  "assessment": a 2-3 sentence narrative summary of advisor performance\\n',
+      '  "assessment": a 2-3 sentence narrative summary of agent performance\\n',
       '  "criterion_scores": object mapping criterion name to its individual score\\n',
+      '  "compliance_flags": array of specific compliance violations found (empty array if none)\\n',
+      '  "coaching_notes": specific coaching recommendations for improvement\\n',
+      '  "requires_human_review": boolean true if score <= 2 or compliance violations found\\n',
       'No markdown formatting. Just the JSON.'
     )
   )

@@ -1,10 +1,10 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Higher Education Advisory Services — 02 Deploy
+# MAGIC # Enterprise Contact Center — 02 Deploy
 # MAGIC
 # MAGIC This notebook orchestrates the full deployment pipeline:
-# MAGIC 1. **Ingest**: Auto Loader streams audio file metadata into bronze
-# MAGIC 2. **Agent Definition**: LangGraph agent with all 10 UC function tools
+# MAGIC 1. **Ingest**: Auto Loader streams call file metadata into bronze
+# MAGIC 2. **Agent Definition**: LangGraph agent with QA evaluation tools
 # MAGIC 3. **MLflow Logging**: Log agent to MLflow with full resource declarations
 # MAGIC 4. **Deployment**: Register model in Unity Catalog and deploy serving endpoint
 # MAGIC 5. **Post-Deploy Validation**: Smoke-test the live endpoint
@@ -21,9 +21,9 @@
 # DBTITLE 1,Configuration
 
 dbutils.widgets.text("catalog", "chada_demos", "Unity Catalog")
-dbutils.widgets.text("schema", "higher_ed_advisory", "Schema")
+dbutils.widgets.text("schema", "contact_center_qa", "Schema")
 dbutils.widgets.text("volume_name", "audio_files", "Volume Name")
-dbutils.widgets.text("volume_path", "/Volumes/chada_demos/pubsec_demos/audio", "Audio Volume Path")
+dbutils.widgets.text("volume_path", "/Volumes/chada_demos/contact_center_qa/call_recordings", "Call Recordings Volume Path")
 dbutils.widgets.text("warehouse_id", "4b9b953939869799", "SQL Warehouse ID")
 dbutils.widgets.text("whisper_endpoint", "va_whisper_large_v3", "Whisper Endpoint")
 dbutils.widgets.text("llm_endpoint", "databricks-meta-llama-3-3-70b-instruct", "LLM Endpoint")
@@ -372,7 +372,7 @@ CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
 FQ = f"{CATALOG}.{SCHEMA}"
 MODEL_CATALOG = "main"
-AGENT_MODEL_NAME = f"{MODEL_CATALOG}.{SCHEMA}.higher_ed_advisory_agent"
+AGENT_MODEL_NAME = f"{MODEL_CATALOG}.{SCHEMA}.contact_center_qa_agent"
 AGENT_LLM_ENDPOINT = dbutils.widgets.get("agent_llm_endpoint")
 LLM_ENDPOINT = dbutils.widgets.get("llm_endpoint")
 WHISPER_ENDPOINT = dbutils.widgets.get("whisper_endpoint")
@@ -420,7 +420,7 @@ except (ImportError, AttributeError):
     except (ImportError, AttributeError):
         print(f"WARNING: Cannot declare resources with mlflow {mlflow.__version__}")
 
-with mlflow.start_run(run_name="higher_ed_advisory_agent"):
+with mlflow.start_run(run_name="contact_center_qa_agent"):
     log_kwargs = dict(
         artifact_path="agent",
         python_model="agent.py",

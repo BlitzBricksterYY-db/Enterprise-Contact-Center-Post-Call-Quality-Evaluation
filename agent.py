@@ -31,7 +31,7 @@ mlflow.langchain.autolog()
 
 LLM_ENDPOINT_NAME = "databricks-claude-3-7-sonnet"
 CATALOG = "chada_demos"
-SCHEMA = "higher_ed_advisory"
+SCHEMA = "contact_center_qa"
 FQ = f"{CATALOG}.{SCHEMA}"
 WAREHOUSE_ID = "4b9b953939869799"
 
@@ -77,16 +77,16 @@ def _execute_sql(sql: str, timeout: int = 120) -> dict:
 
 @tool
 def transcribe_and_save_to_silver(file_path: str) -> str:
-    """Transcribe a single audio file using Whisper and save the result to the silver_transcriptions table.
+    """Transcribe a single call recording using Whisper and save the result to the silver_transcriptions table.
 
-    Use this when a user asks to transcribe a specific audio file or speaker.
-    The file_path should be a full Volume path like /Volumes/chada_demos/pubsec_demos/audio/Speaker_0001.wav
+    Use this when a user asks to transcribe a specific call recording.
+    The file_path should be a full Volume path like /Volumes/chada_demos/contact_center_qa/call_recordings/call_0042.wav
 
     Args:
         file_path: Full Volume path to the audio file.
 
     Returns:
-        JSON with transcription result including filename, speaker_id, word_count, and a preview.
+        JSON with transcription result including filename, call_id, agent_id, word_count, and a preview.
     """
     # Check if already transcribed
     safe_path = file_path.replace("'", "''")
@@ -145,7 +145,7 @@ def transcribe_and_save_to_silver(file_path: str) -> str:
 
 @tool
 def enrich_and_save_to_gold(file_path: str) -> str:
-    """Enrich a transcribed call with full AI analysis and save to the gold_enriched_calls table.
+    """Enrich a transcribed call with full AI analysis and save to the gold_qa_evaluations table.
 
     Runs sentiment analysis, topic extraction, call classification, and rubric scoring
     on a transcript that is already in silver, then persists the results to gold.
@@ -160,7 +160,7 @@ def enrich_and_save_to_gold(file_path: str) -> str:
 
     # Check if already enriched
     check = _execute_sql(
-        f"SELECT COUNT(*) AS cnt FROM {FQ}.gold_enriched_calls WHERE file_path = '{safe_path}'"
+        f"SELECT COUNT(*) AS cnt FROM {FQ}.gold_qa_evaluations WHERE file_path = '{safe_path}'"
     )
     if check.get("rows") and check["rows"][0].get("cnt", "0") != "0":
         return json.dumps({"status": "already_exists", "message": f"{file_path} is already enriched in gold."})
@@ -231,7 +231,7 @@ def enrich_and_save_to_gold(file_path: str) -> str:
 
     # Insert into gold
     insert_sql = f"""
-    INSERT INTO {FQ}.gold_enriched_calls
+    INSERT INTO {FQ}.gold_qa_evaluations
         (filename, file_path, speaker_id, transcription,
          sentiment, sentiment_confidence, topics, intent, call_category,
          rubric_score, rubric_assessment, improvement_areas, word_count, enriched_at)
@@ -263,7 +263,7 @@ def enrich_and_save_to_gold(file_path: str) -> str:
         "intent": intent_str,
         "rubric_score": rubric_score,
         "improvement_areas": improvement_areas,
-        "saved_to": "gold_enriched_calls",
+        "saved_to": "gold_qa_evaluations",
     })
 
 
@@ -278,7 +278,7 @@ def check_pipeline_status() -> str:
     SELECT
         (SELECT COUNT(*) FROM {FQ}.bronze_audio_files) AS bronze,
         (SELECT COUNT(*) FROM {FQ}.silver_transcriptions) AS silver,
-        (SELECT COUNT(*) FROM {FQ}.gold_enriched_calls) AS gold
+        (SELECT COUNT(*) FROM {FQ}.gold_qa_evaluations) AS gold
     """)
     if "error" in result:
         return json.dumps({"status": "error", "message": result["error"]})
@@ -291,7 +291,7 @@ def check_pipeline_status() -> str:
     return json.dumps({
         "bronze_audio_files": bronze,
         "silver_transcriptions": silver,
-        "gold_enriched_calls": gold,
+        "gold_qa_evaluations": gold,
         "pending_transcription": bronze - silver,
         "pending_enrichment": silver - gold,
         "message": (
@@ -337,45 +337,48 @@ def get_tools():
 # System Prompt
 # ---------------------------------------------------------------------------
 
-system_prompt = """You are an AI-powered advisor quality analyst for a Higher Education call center.
+system_prompt = """You are an AI-powered post-call quality evaluation agent for an enterprise contact center.
 
-You help administrators and QA managers process, transcribe, and analyze advisory calls
-(financial aid, admissions, enrollment, academic advising) at scale.
+You help QA supervisors and managers process, transcribe, and evaluate customer service calls
+against a configurable QA checklist. You identify coaching opportunities, flag compliance risks,
+and prioritize calls needing human review.
 
 ## Your Tools
 
 ### Discovery
-1. **find_audio_file(speaker_query)** - Locate a specific speaker's audio file by name or number.
-2. **find_all_audio_files()** - List every audio file in the advisory services Volume.
+1. **find_audio_file(speaker_query)** - Locate a specific call recording by agent name, call ID, or filename.
+2. **find_all_audio_files()** - List every call recording in the Volume.
 
 ### Transcription & Pipeline
-3. **transcribe_and_save_to_silver(file_path)** - Transcribe a single audio file with Whisper and save the result to the silver table. You MUST have the full file_path — use find_audio_file first.
-4. **enrich_and_save_to_gold(file_path)** - Run full AI analysis (sentiment, topics, category, rubric) on a silver transcript and save to the gold table. The file must be transcribed first.
+3. **transcribe_and_save_to_silver(file_path)** - Transcribe a call recording with Whisper and save to silver. You MUST have the full file_path — use find_audio_file first.
+4. **evaluate_and_save_to_gold(file_path)** - Run full QA evaluation (sentiment, topics, category, rubric scoring, compliance check) on a silver transcript and save to gold. The file must be transcribed first.
 5. **check_pipeline_status()** - Show counts for bronze/silver/gold tables and how many are pending.
 
 ### Analysis (work on any text — does NOT save to tables)
-6. **classify_call_category(transcription)** - Classify into: Financial Aid, Admissions, Enrollment, Academic Advising, Registration, Housing, Billing, Career Services, or Other.
-7. **analyze_call_sentiment(transcription)** - Analyze student sentiment. Returns JSON with label and confidence.
+6. **classify_call_category(transcription)** - Classify into: Sales, Support, Billing, Technical, Complaints, Retention, Account Management, or Other.
+7. **analyze_call_sentiment(transcription)** - Analyze customer sentiment. Returns JSON with label and confidence.
 8. **extract_topics_and_intent(transcription)** - Extract key topics and primary intent.
-9. **assess_rubric_rag(transcription)** - Score advisor performance 1-5 across rubric criteria using RAG.
+9. **assess_rubric_rag(transcription)** - Score agent 1-5 on QA checklist criteria using RAG. Returns per-criterion scores, compliance flags, and coaching notes.
 10. **enrich_single_call(transcription)** - Run ALL analysis at once (sentiment + topics + category + rubric).
 
 ## Recommended Workflows
 
 | User Request | Tool Sequence |
 |---|---|
-| "Transcribe speaker 12" | find_audio_file → transcribe_and_save_to_silver |
-| "Full analysis of speaker 5" | find_audio_file → transcribe_and_save_to_silver → enrich_and_save_to_gold |
-| "Analyze this transcript" | enrich_single_call (or individual analysis tools) |
+| "Transcribe call 42" | find_audio_file → transcribe_and_save_to_silver |
+| "Full QA evaluation of call 42" | find_audio_file → transcribe_and_save_to_silver → evaluate_and_save_to_gold |
+| "Evaluate this transcript" | enrich_single_call (or individual analysis tools) |
 | "Pipeline status" | check_pipeline_status |
-| "What files do we have?" | find_all_audio_files |
+| "What calls are available?" | find_all_audio_files |
 
 ## Guidelines
 - Always use find_audio_file first to get the full file_path before transcribing.
-- After transcribing, offer to run enrichment to gold.
+- After transcribing, offer to run QA evaluation to gold.
 - Report exact counts and status after pipeline operations.
 - For ad-hoc analysis of text the user provides, use the analysis tools directly (they don't save to tables).
-- The rubric scores advisors 1-5 across: Greeting, Active Listening, Accurate Information, Empathy, and Resolution.
+- Flag any call scoring <= 2 overall or with compliance violations as requiring human review.
+- The QA checklist scores agents 1-5 across: Greeting & ID Verification, Empathy & Active Listening, Accurate Information, Escalation Protocol, and Compliance & Disclosures.
+- Provide specific coaching recommendations when scores are low.
 """
 
 
