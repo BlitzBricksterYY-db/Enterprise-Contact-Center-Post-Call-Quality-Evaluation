@@ -500,7 +500,7 @@ for attempt in range(60):
     try:
         ep = w.serving_endpoints.get(endpoint_name)
         state = ep.state.ready if ep.state else None
-        if state and str(state).upper() == "READY":
+        if state and "READY" in str(state).upper():
             print(f"Endpoint is READY after {attempt * 15}s")
             break
         print(f"  [{attempt * 15}s] State: {state}")
@@ -521,12 +521,19 @@ w = WorkspaceClient()
 
 def query_endpoint(prompt: str) -> dict:
     """Send a chat message to the deployed agent endpoint."""
-    response = w.serving_endpoints.query(
-        name=endpoint_name,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    resp_dict = response.as_dict() if hasattr(response, "as_dict") else response
-    return resp_dict if isinstance(resp_dict, dict) else response
+    try:
+        response = w.serving_endpoints.query(
+            name=endpoint_name,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.as_dict() if hasattr(response, "as_dict") else response
+    except AttributeError:
+        # Fallback: SDK as_dict() bug on nested dicts in agent responses
+        return w.api_client.do(
+            "POST",
+            f"/serving-endpoints/{endpoint_name}/invocations",
+            body={"messages": [{"role": "user", "content": prompt}]},
+        )
 
 # -- Test 1: List files (invokes find_all_audio_files) --
 print("=" * 60)
@@ -587,7 +594,6 @@ print("=" * 60)
 # COMMAND ----------
 
 # DBTITLE 1,Enable Change Data Feed for Vector Search
-
 try:
     spark.sql(f"""
     ALTER TABLE {FQ}.gold_enriched_calls
@@ -601,37 +607,114 @@ except Exception as e:
 
 # DBTITLE 1,Create Vector Search Index
 
-from databricks.sdk import WorkspaceClient
-w = WorkspaceClient()
+# Use VectorSearchClient (avoids SDK .as_dict() deserialization bug)
+from databricks.vector_search.client import VectorSearchClient
 
+vsc = VectorSearchClient()
 vs_index_name = f"{FQ}.gold_enriched_calls_vs_index"
 
 try:
-    w.vector_search_indexes.get_index(vs_index_name)
+    existing = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=vs_index_name)
     print(f"Vector Search index already exists: {vs_index_name}")
-except Exception as get_err:
-  try:
-    print(f"Creating Vector Search index: {vs_index_name}")
-    w.vector_search_indexes.create_index(
-        name=vs_index_name,
-        endpoint_name=VS_ENDPOINT,
-        primary_key="file_path",
-        index_type="DELTA_SYNC",
-        delta_sync_index_spec={
-            "source_table": f"{FQ}.gold_enriched_calls",
-            "embedding_source_columns": [
-                {"name": "transcription", "embedding_model_endpoint_name": EMBEDDING_ENDPOINT}
+except Exception:
+    try:
+        print(f"Creating Vector Search index: {vs_index_name}")
+        index = vsc.create_delta_sync_index(
+            endpoint_name=VS_ENDPOINT,
+            source_table_name=f"{FQ}.gold_enriched_calls",
+            index_name=vs_index_name,
+            primary_key="file_path",
+            pipeline_type="TRIGGERED",
+            embedding_source_column="transcription",
+            embedding_model_endpoint_name=EMBEDDING_ENDPOINT,
+            columns_to_sync=[
+                "filename", "agent_id", "queue_type", "sentiment", "sentiment_confidence",
+                "topics", "call_category", "overall_qa_score", "coaching_notes",
+                "requires_human_review",
             ],
-            "pipeline_type": "TRIGGERED",
-            "columns_to_sync": [
-                "filename", "speaker_id", "sentiment", "topics", "intent",
-                "call_category", "rubric_score", "rubric_assessment", "improvement_areas",
-            ],
-        },
-    )
-    print(f"Vector Search index created: {vs_index_name}")
-  except Exception as create_err:
-    print(f"Vector Search index creation skipped: {create_err}")
+        )
+        print(f"Vector Search index created: {vs_index_name}")
+    except Exception as create_err:
+        print(f"Vector Search index creation skipped: {create_err}")
+
+# COMMAND ----------
+
+# DBTITLE 1,Agent Bricks — Create Knowledge Assistant
+# MAGIC %md
+# MAGIC ## Stage 8b: Agent Bricks — Knowledge Assistant
+# MAGIC
+# MAGIC Creates a **Knowledge Assistant (KA)** Agent Brick backed by the `gold_enriched_calls_vs_index`.
+# MAGIC The KA exposes a conversational RAG interface over call transcriptions and QA metadata.
+
+# COMMAND ----------
+
+# DBTITLE 1,Create KA — Contact Center Q&A
+
+# Knowledge Assistants API: POST /api/2.0/knowledge-assistants
+# (SDK 0.67 lacks the knowledgeassistants module; call REST directly)
+from databricks.sdk import WorkspaceClient
+import json
+
+w = WorkspaceClient()
+KA_DISPLAY_NAME = "Contact Center QA Assistant"
+vs_index_name = (
+    f"{FQ}.gold_enriched_calls_vs_index"
+    if "FQ" in dir() else
+    "yyang.contact_center_qa.gold_enriched_calls_vs_index"
+)
+
+# 'name' is a required user-supplied resource identifier (CLI auto-generates it from
+# display_name; raw REST calls must provide it explicitly).
+# Format: lowercase, hyphens/underscores, no spaces.
+result = w.api_client.do(
+    "POST",
+    "/api/2.0/knowledge-assistants",
+    body={
+        "name": "contact-center-qa-assistant",
+        "display_name": KA_DISPLAY_NAME,
+        "description": (
+            "AI-powered Q&A over contact center call transcriptions and QA evaluation results. "
+            "Ask about specific calls, agent performance, sentiment trends, compliance flags, "
+            "and coaching recommendations."
+        ),
+        "instructions": (
+            "You are a contact center QA analyst. "
+            "Answer questions using call transcriptions and QA scores in your knowledge base. "
+            "Cite filename and agent_id as evidence. Use overall_qa_score, sentiment, and "
+            "call_category to contextualize answers. Highlight compliance_flags when relevant. "
+            "If the answer is not in the available calls, say so clearly."
+        ),
+        "knowledge_sources": [{
+            "display_name": "Gold Enriched Calls VS Index",
+            "description": "VS index over call transcriptions with QA scores, sentiment, topics, compliance flags, and coaching notes.",
+            "source_type": "index",
+            "index_source": {
+                "name": "gold-enriched-calls-index",
+                "type": "DELTA_SYNC",
+                "index": {
+                    "name": vs_index_name,
+                    "text_col": "coaching_notes",
+                    "doc_uri_col": "filename",
+                },
+            },
+        }],
+    },
+)
+
+# Response is wrapped under 'knowledge_assistant' key
+ka = result.get("knowledge_assistant", result)
+ka_name          = ka.get("name")                              # e.g. 'contact-center-qa-assistant'
+ka_tile_id       = ka.get("id")                                # UUID
+ka_endpoint      = ka.get("endpoint_name")                     # e.g. 'ka-5154a6db-endpoint'
+ka_resource_name = f"knowledge-assistants/{ka_name}"           # used by cell 28
+
+print(f"KA name     : {ka_name}")
+print(f"tile_id     : {ka_tile_id}")
+print(f"endpoint    : {ka_endpoint}")
+print(f"resource    : {ka_resource_name}")
+print("\nFull response:")
+print(json.dumps(result, indent=2, default=str))
+
 
 # COMMAND ----------
 
