@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Enterprise Contact Center — 02 Deploy
 # MAGIC
@@ -18,19 +22,23 @@
 
 # COMMAND ----------
 
+dbutils.widgets.removeAll()
+
+# COMMAND ----------
+
 # DBTITLE 1,Configuration
 
-dbutils.widgets.text("catalog", "chada_demos", "Unity Catalog")
+dbutils.widgets.text("catalog", "yyang", "Unity Catalog")
 dbutils.widgets.text("schema", "contact_center_qa", "Schema")
 dbutils.widgets.text("volume_name", "audio_files", "Volume Name")
-dbutils.widgets.text("volume_path", "/Volumes/chada_demos/contact_center_qa/call_recordings", "Call Recordings Volume Path")
-dbutils.widgets.text("warehouse_id", "4b9b953939869799", "SQL Warehouse ID")
+dbutils.widgets.text("volume_path", "/Volumes/chada_demos/pubsec_demos/audio/", "Call Recordings Volume Path")
+dbutils.widgets.text("warehouse_id", "8baced1ff014912d", "SQL Warehouse ID")
 dbutils.widgets.text("whisper_endpoint", "va_whisper_large_v3", "Whisper Endpoint")
-dbutils.widgets.text("llm_endpoint", "databricks-meta-llama-3-3-70b-instruct", "LLM Endpoint")
-dbutils.widgets.text("agent_llm_endpoint", "databricks-claude-3-7-sonnet", "Agent LLM Endpoint")
+dbutils.widgets.text("llm_endpoint", "databricks-gemini-3-5-flash", "LLM Endpoint")
+dbutils.widgets.text("agent_llm_endpoint", "databricks-claude-sonnet-4-6", "Agent LLM Endpoint")
 dbutils.widgets.text("embedding_endpoint", "databricks-gte-large-en", "Embedding Endpoint")
 dbutils.widgets.text("vector_search_endpoint", "one-env-shared-endpoint-1", "VS Endpoint")
-dbutils.widgets.text("checkpoint_base", "dbfs:/tmp/checkpoints/higher_ed_advisory", "Checkpoint Base Path")
+dbutils.widgets.text("checkpoint_base", "dbfs:/tmp/checkpoints/contact_center_qa", "Checkpoint Base Path")
 
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
@@ -46,9 +54,9 @@ CHECKPOINT_BASE = dbutils.widgets.get("checkpoint_base")
 
 FQ = f"{CATALOG}.{SCHEMA}"
 # Model registered in 'main' catalog (UC model registry permissions)
-MODEL_CATALOG = "main"
+MODEL_CATALOG = CATALOG
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {MODEL_CATALOG}.{SCHEMA}")
-AGENT_MODEL_NAME = f"{MODEL_CATALOG}.{SCHEMA}.higher_ed_advisory_agent"
+AGENT_MODEL_NAME = f"{MODEL_CATALOG}.{SCHEMA}.contact_center_qa_agent"
 
 print(f"Pipeline data: {FQ}")
 print(f"Agent model: {AGENT_MODEL_NAME}")
@@ -92,14 +100,15 @@ CREATE TABLE IF NOT EXISTS {FQ}.bronze_audio_files (
 """)
 
 bronze_table = f"{FQ}.bronze_audio_files"
-checkpoint_path = f"{CHECKPOINT_BASE}/bronze_audio"
+# Use Volume path for checkpoints (DBFS not writable on serverless)
+checkpoint_path = f"/Volumes/{CATALOG}/{SCHEMA}/{VOLUME_NAME}/checkpoints/bronze_audio"
 
 bronze_stream = (
     spark.readStream
     .format("cloudFiles")
     .option("cloudFiles.format", "binaryFile")
     .option("cloudFiles.includeExistingFiles", "true")
-    .option("cloudFiles.schemaLocation", f"{CHECKPOINT_BASE}/bronze_schema")
+    .option("cloudFiles.schemaLocation", f"/Volumes/{CATALOG}/{SCHEMA}/{VOLUME_NAME}/checkpoints/bronze_schema")
     .load(VOLUME_PATH)
     .withColumn("file_path", regexp_replace(col("path"), "^dbfs:", ""))
     .withColumn("filename", element_at(split(col("path"), "/"), -1))
@@ -137,177 +146,169 @@ print(f"Bronze ingestion complete: {bronze_count} files cataloged in {bronze_tab
 # COMMAND ----------
 
 # DBTITLE 1,Write agent.py
-
-agent_code = r'''
-"""
-Higher Education Advisory Services - LangGraph Agent
-
-This agent orchestrates the full advisory call processing pipeline via
-Unity Catalog function tools.
-"""
-from typing import Any, Generator, Optional
-
-import mlflow
-from databricks_langchain import ChatDatabricks, UCFunctionToolkit
-from langchain_core.runnables import RunnableLambda
-from langgraph.graph import END, StateGraph
-from mlflow.langchain.chat_agent_langgraph import ChatAgentState, ChatAgentToolNode
-from mlflow.pyfunc import ChatAgent
-from mlflow.types.agent import (
-    ChatAgentChunk, ChatAgentMessage, ChatAgentResponse, ChatContext,
-)
-
-mlflow.langchain.autolog()
-
-LLM_ENDPOINT_NAME = "''' + AGENT_LLM_ENDPOINT + r'''"
-CATALOG = "''' + CATALOG + r'''"
-SCHEMA = "''' + SCHEMA + r'''"
-
-llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
-
-system_prompt = """You are an AI-powered advisor quality analyst for a Higher Education call center.
-
-You help administrators and QA managers process, transcribe, and analyze advisory calls
-(financial aid, admissions, enrollment, academic advising) at scale.
-
-## Your Tools
-
-### Discovery & File Management
-1. **find_audio_file(speaker_query)** - Locate a specific speaker's audio file by name or number.
-2. **find_all_audio_files()** - List every audio file in the advisory services Volume.
-
-### Transcription
-3. **transcribe_and_save_to_silver(file_path)** - Transcribe a single audio file with Whisper and return the transcript with metadata.
-4. **process_all_audio_to_silver()** - Check transcription status: shows total files, already transcribed, and pending counts.
-
-### Analysis (work on any transcript text)
-5. **classify_call_category(transcription)** - Classify a call into: Financial Aid, Admissions, Enrollment, Academic Advising, Registration, Housing, Billing, Career Services, or Other.
-6. **analyze_call_sentiment(transcription)** - Analyze student sentiment. Returns JSON with sentiment label and confidence.
-7. **extract_topics_and_intent(transcription)** - Extract key topics, primary intent, and improvement areas.
-8. **assess_rubric_rag(transcription)** - Score advisor performance 1-5 across 5 rubric criteria using RAG.
-9. **enrich_single_call(transcription)** - Run ALL enrichment at once: sentiment, topics, category, and rubric assessment in one call.
-
-### Pipeline Status
-10. **enrich_silver_to_gold()** - Check enrichment pipeline status: silver vs gold record counts.
-
-## Recommended Workflows
-
-| User Request | Tool Sequence |
-|---|---|
-| "Transcribe speaker 12" | find_audio_file -> transcribe_and_save_to_silver |
-| "Analyze this transcript" | enrich_single_call (or individual tools) |
-| "Score this call" | assess_rubric_rag |
-| "What files do we have?" | find_all_audio_files |
-| "Pipeline status" | process_all_audio_to_silver -> enrich_silver_to_gold |
-| "Full analysis of speaker 5" | find_audio_file -> transcribe_and_save_to_silver -> enrich_single_call |
-
-## Guidelines
-- Always confirm what was accomplished after each tool call.
-- Report errors clearly with suggested remediation.
-- For full call analysis, use enrich_single_call which runs all enrichment in one step.
-- The rubric assessment scores advisors 1-5 across: Greeting, Active Listening, Accurate Information, Empathy, and Resolution.
-"""
-
-uc_tool_names = [
-    f"{CATALOG}.{SCHEMA}.find_audio_file",
-    f"{CATALOG}.{SCHEMA}.find_all_audio_files",
-    f"{CATALOG}.{SCHEMA}.transcribe_and_save_to_silver",
-    f"{CATALOG}.{SCHEMA}.process_all_audio_to_silver",
-    f"{CATALOG}.{SCHEMA}.enrich_silver_to_gold",
-    f"{CATALOG}.{SCHEMA}.classify_call_category",
-    f"{CATALOG}.{SCHEMA}.analyze_call_sentiment",
-    f"{CATALOG}.{SCHEMA}.extract_topics_and_intent",
-    f"{CATALOG}.{SCHEMA}.assess_rubric_rag",
-    f"{CATALOG}.{SCHEMA}.enrich_single_call",
-]
-uc_toolkit = UCFunctionToolkit(function_names=uc_tool_names)
-tools = uc_toolkit.tools
-
-
-def create_tool_calling_agent(model, tools, system_prompt=None):
-    model = model.bind_tools(tools)
-
-    def should_continue(state):
-        last = state["messages"][-1]
-        if hasattr(last, "tool_calls") and last.tool_calls:
-            return "continue"
-        if isinstance(last, dict) and last.get("tool_calls"):
-            return "continue"
-        return "end"
-
-    if system_prompt:
-        preprocessor = RunnableLambda(
-            lambda state: [{"role": "system", "content": system_prompt}] + state["messages"]
-        )
-    else:
-        preprocessor = RunnableLambda(lambda state: state["messages"])
-    model_runnable = preprocessor | model
-
-    def call_model(state, config):
-        return {"messages": [model_runnable.invoke(state, config)]}
-
-    workflow = StateGraph(ChatAgentState)
-    workflow.add_node("agent", RunnableLambda(call_model))
-    workflow.add_node("tools", ChatAgentToolNode(tools))
-    workflow.set_entry_point("agent")
-    workflow.add_conditional_edges(
-        "agent", should_continue, {"continue": "tools", "end": END}
-    )
-    workflow.add_edge("tools", "agent")
-    return workflow.compile()
-
-
-class LangGraphChatAgent(ChatAgent):
-    def __init__(self, agent):
-        self.agent = agent
-
-    def predict(self, messages, context=None, custom_inputs=None):
-        request = {"messages": self._convert_messages_to_dict(messages)}
-        out_msgs = []
-        for event in self.agent.stream(request, stream_mode="updates"):
-            for node_data in event.values():
-                for m in node_data.get("messages", []):
-                    if isinstance(m, dict):
-                        out_msgs.append(ChatAgentMessage(**m))
-                    else:
-                        role = getattr(m, "type", "assistant")
-                        role = "assistant" if role == "ai" else role
-                        kwargs = {}
-                        if getattr(m, "tool_calls", None):
-                            kwargs["tool_calls"] = m.tool_calls
-                        out_msgs.append(ChatAgentMessage(
-                            role=role,
-                            content=getattr(m, "content", str(m)),
-                            **kwargs,
-                        ))
-        return ChatAgentResponse(messages=out_msgs)
-
-    def predict_stream(self, messages, context=None, custom_inputs=None):
-        request = {"messages": self._convert_messages_to_dict(messages)}
-        for event in self.agent.stream(request, stream_mode="updates"):
-            for node_data in event.values():
-                for m in node_data.get("messages", []):
-                    if isinstance(m, dict):
-                        yield ChatAgentChunk(**{"delta": m})
-                    else:
-                        role = getattr(m, "type", "assistant")
-                        role = "assistant" if role == "ai" else role
-                        yield ChatAgentChunk(**{"delta": {
-                            "role": role,
-                            "content": getattr(m, "content", str(m)),
-                        }})
-
-agent = create_tool_calling_agent(llm, tools, system_prompt)
-AGENT = LangGraphChatAgent(agent)
-mlflow.models.set_model(AGENT)
-'''
-
-# Write to workspace
-agent_path = "/Workspace/Users/chad.ammirati@databricks.com/Higher_Ed_Advisory_Services/agent.py"
-with open(agent_path, "w") as f:
-    f.write(agent_code.strip())
-
-print("agent.py written successfully")
+# MAGIC %%writefile agent.py
+# MAGIC """
+# MAGIC Higher Education Advisory Services - LangGraph Agent
+# MAGIC
+# MAGIC This agent orchestrates the full advisory call processing pipeline via
+# MAGIC Unity Catalog function tools.
+# MAGIC """
+# MAGIC import os
+# MAGIC from typing import Any, Generator, Optional
+# MAGIC
+# MAGIC import mlflow
+# MAGIC from databricks_langchain import ChatDatabricks, UCFunctionToolkit
+# MAGIC from langchain_core.runnables import RunnableLambda
+# MAGIC from langgraph.graph import END, StateGraph
+# MAGIC from mlflow.langchain.chat_agent_langgraph import ChatAgentState, ChatAgentToolNode
+# MAGIC from mlflow.pyfunc import ChatAgent
+# MAGIC from mlflow.types.agent import (
+# MAGIC     ChatAgentChunk, ChatAgentMessage, ChatAgentResponse, ChatContext,
+# MAGIC )
+# MAGIC
+# MAGIC mlflow.langchain.autolog()
+# MAGIC
+# MAGIC LLM_ENDPOINT_NAME = os.environ.get("AGENT_LLM_ENDPOINT", "databricks-claude-sonnet-4-6")
+# MAGIC CATALOG = os.environ.get("CATALOG", "yyang")
+# MAGIC SCHEMA = os.environ.get("SCHEMA", "contact_center_qa")
+# MAGIC
+# MAGIC llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
+# MAGIC
+# MAGIC system_prompt = """You are an AI-powered advisor quality analyst for a Higher Education call center.
+# MAGIC
+# MAGIC You help administrators and QA managers process, transcribe, and analyze advisory calls
+# MAGIC (financial aid, admissions, enrollment, academic advising) at scale.
+# MAGIC
+# MAGIC ## Your Tools
+# MAGIC
+# MAGIC ### Discovery & File Management
+# MAGIC 1. **find_audio_file(speaker_query)** - Locate a specific speaker's audio file by name or number.
+# MAGIC 2. **find_all_audio_files()** - List every audio file in the advisory services Volume.
+# MAGIC
+# MAGIC ### Transcription
+# MAGIC 3. **transcribe_and_save_to_silver(file_path)** - Transcribe a single audio file with Whisper and return the transcript with metadata.
+# MAGIC 4. **process_all_audio_to_silver()** - Check transcription status: shows total files, already transcribed, and pending counts.
+# MAGIC
+# MAGIC ### Analysis (work on any transcript text)
+# MAGIC 5. **classify_call_category(transcription)** - Classify a call into: Financial Aid, Admissions, Enrollment, Academic Advising, Registration, Housing, Billing, Career Services, or Other.
+# MAGIC 6. **analyze_call_sentiment(transcription)** - Analyze student sentiment. Returns JSON with sentiment label and confidence.
+# MAGIC 7. **extract_topics_and_intent(transcription)** - Extract key topics, primary intent, and improvement areas.
+# MAGIC 8. **assess_rubric_rag(transcription)** - Score advisor performance 1-5 across 5 rubric criteria using RAG.
+# MAGIC 9. **enrich_single_call(transcription)** - Run ALL enrichment at once: sentiment, topics, category, and rubric assessment in one call.
+# MAGIC
+# MAGIC ### Pipeline Status
+# MAGIC 10. **enrich_silver_to_gold()** - Check enrichment pipeline status: silver vs gold record counts.
+# MAGIC
+# MAGIC ## Recommended Workflows
+# MAGIC
+# MAGIC | User Request | Tool Sequence |
+# MAGIC |---|---|
+# MAGIC | "Transcribe speaker 12" | find_audio_file -> transcribe_and_save_to_silver |
+# MAGIC | "Analyze this transcript" | enrich_single_call (or individual tools) |
+# MAGIC | "Score this call" | assess_rubric_rag |
+# MAGIC | "What files do we have?" | find_all_audio_files |
+# MAGIC | "Pipeline status" | process_all_audio_to_silver -> enrich_silver_to_gold |
+# MAGIC | "Full analysis of speaker 5" | find_audio_file -> transcribe_and_save_to_silver -> enrich_single_call |
+# MAGIC
+# MAGIC ## Guidelines
+# MAGIC - Always confirm what was accomplished after each tool call.
+# MAGIC - Report errors clearly with suggested remediation.
+# MAGIC - For full call analysis, use enrich_single_call which runs all enrichment in one step.
+# MAGIC - The rubric assessment scores advisors 1-5 across: Greeting, Active Listening, Accurate Information, Empathy, and Resolution.
+# MAGIC """
+# MAGIC
+# MAGIC uc_tool_names = [
+# MAGIC     f"{CATALOG}.{SCHEMA}.find_audio_file",
+# MAGIC     f"{CATALOG}.{SCHEMA}.find_all_audio_files",
+# MAGIC     f"{CATALOG}.{SCHEMA}.transcribe_and_save_to_silver",
+# MAGIC     f"{CATALOG}.{SCHEMA}.process_all_audio_to_silver",
+# MAGIC     f"{CATALOG}.{SCHEMA}.enrich_silver_to_gold",
+# MAGIC     f"{CATALOG}.{SCHEMA}.classify_call_category",
+# MAGIC     f"{CATALOG}.{SCHEMA}.analyze_call_sentiment",
+# MAGIC     f"{CATALOG}.{SCHEMA}.extract_topics_and_intent",
+# MAGIC     f"{CATALOG}.{SCHEMA}.assess_rubric_rag",
+# MAGIC     f"{CATALOG}.{SCHEMA}.enrich_single_call",
+# MAGIC ]
+# MAGIC uc_toolkit = UCFunctionToolkit(function_names=uc_tool_names)
+# MAGIC tools = uc_toolkit.tools
+# MAGIC
+# MAGIC
+# MAGIC def create_tool_calling_agent(model, tools, system_prompt=None):  # noqa: E303
+# MAGIC     model = model.bind_tools(tools)
+# MAGIC
+# MAGIC     def should_continue(state):
+# MAGIC         last = state["messages"][-1]
+# MAGIC         if hasattr(last, "tool_calls") and last.tool_calls:
+# MAGIC             return "continue"
+# MAGIC         if isinstance(last, dict) and last.get("tool_calls"):
+# MAGIC             return "continue"
+# MAGIC         return "end"
+# MAGIC
+# MAGIC     if system_prompt:
+# MAGIC         preprocessor = RunnableLambda(
+# MAGIC             lambda state: [{"role": "system", "content": system_prompt}] + state["messages"]
+# MAGIC         )
+# MAGIC     else:
+# MAGIC         preprocessor = RunnableLambda(lambda state: state["messages"])
+# MAGIC     model_runnable = preprocessor | model
+# MAGIC
+# MAGIC     def call_model(state, config):
+# MAGIC         return {"messages": [model_runnable.invoke(state, config)]}
+# MAGIC
+# MAGIC     workflow = StateGraph(ChatAgentState)
+# MAGIC     workflow.add_node("agent", RunnableLambda(call_model))
+# MAGIC     workflow.add_node("tools", ChatAgentToolNode(tools))
+# MAGIC     workflow.set_entry_point("agent")
+# MAGIC     workflow.add_conditional_edges(
+# MAGIC         "agent", should_continue, {"continue": "tools", "end": END}
+# MAGIC     )
+# MAGIC     workflow.add_edge("tools", "agent")
+# MAGIC     return workflow.compile()
+# MAGIC
+# MAGIC
+# MAGIC class LangGraphChatAgent(ChatAgent):
+# MAGIC     def __init__(self, agent):
+# MAGIC         self.agent = agent
+# MAGIC
+# MAGIC     def predict(self, messages, context=None, custom_inputs=None):
+# MAGIC         request = {"messages": self._convert_messages_to_dict(messages)}
+# MAGIC         out_msgs = []
+# MAGIC         for event in self.agent.stream(request, stream_mode="updates"):
+# MAGIC             for node_data in event.values():
+# MAGIC                 for m in node_data.get("messages", []):
+# MAGIC                     if isinstance(m, dict):
+# MAGIC                         out_msgs.append(ChatAgentMessage(**m))
+# MAGIC                     else:
+# MAGIC                         role = getattr(m, "type", "assistant")
+# MAGIC                         role = "assistant" if role == "ai" else role
+# MAGIC                         kwargs = {}
+# MAGIC                         if getattr(m, "tool_calls", None):
+# MAGIC                             kwargs["tool_calls"] = m.tool_calls
+# MAGIC                         out_msgs.append(ChatAgentMessage(
+# MAGIC                             role=role,
+# MAGIC                             content=getattr(m, "content", str(m)),
+# MAGIC                             **kwargs,
+# MAGIC                         ))
+# MAGIC         return ChatAgentResponse(messages=out_msgs)
+# MAGIC
+# MAGIC     def predict_stream(self, messages, context=None, custom_inputs=None):
+# MAGIC         request = {"messages": self._convert_messages_to_dict(messages)}
+# MAGIC         for event in self.agent.stream(request, stream_mode="updates"):
+# MAGIC             for node_data in event.values():
+# MAGIC                 for m in node_data.get("messages", []):
+# MAGIC                     if isinstance(m, dict):
+# MAGIC                         yield ChatAgentChunk(**{"delta": m})
+# MAGIC                     else:
+# MAGIC                         role = getattr(m, "type", "assistant")
+# MAGIC                         role = "assistant" if role == "ai" else role
+# MAGIC                         yield ChatAgentChunk(**{"delta": {
+# MAGIC                             "role": role,
+# MAGIC                             "content": getattr(m, "content", str(m)),
+# MAGIC                         }})
+# MAGIC
+# MAGIC agent = create_tool_calling_agent(llm, tools, system_prompt)
+# MAGIC AGENT = LangGraphChatAgent(agent)
+# MAGIC mlflow.models.set_model(AGENT)
 
 # COMMAND ----------
 
@@ -318,6 +319,13 @@ print("agent.py written successfully")
 
 # DBTITLE 1,Test Agent Locally (Pre-Deploy)
 
+import os, importlib
+os.environ["AGENT_LLM_ENDPOINT"] = AGENT_LLM_ENDPOINT
+os.environ["CATALOG"] = CATALOG
+os.environ["SCHEMA"] = SCHEMA
+
+import agent
+importlib.reload(agent)
 from agent import AGENT
 from mlflow.types.agent import ChatAgentMessage
 
@@ -357,8 +365,9 @@ print("\nLocal smoke tests passed.")
 # COMMAND ----------
 
 # DBTITLE 1,Upgrade MLflow for Resource Declarations
-# MAGIC %pip install --upgrade "mlflow[databricks]>=2.17.0"
-# MAGIC dbutils.library.restartPython()
+##: serverless should have newest Mlflow already
+# %pip install --upgrade "mlflow[databricks]>=2.17.0"
+# dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -371,7 +380,7 @@ mlflow.set_registry_uri("databricks-uc")
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
 FQ = f"{CATALOG}.{SCHEMA}"
-MODEL_CATALOG = "main"
+MODEL_CATALOG = CATALOG
 AGENT_MODEL_NAME = f"{MODEL_CATALOG}.{SCHEMA}.contact_center_qa_agent"
 AGENT_LLM_ENDPOINT = dbutils.widgets.get("agent_llm_endpoint")
 LLM_ENDPOINT = dbutils.widgets.get("llm_endpoint")
@@ -691,79 +700,79 @@ print(f"""
 
 # DBTITLE 1,Redeploy: Log + Register + Update Endpoint
 
-import mlflow
-from mlflow.models.resources import DatabricksServingEndpoint, DatabricksFunction
+# import mlflow
+# from mlflow.models.resources import DatabricksServingEndpoint, DatabricksFunction
 
-mlflow.set_registry_uri("databricks-uc")
+# mlflow.set_registry_uri("databricks-uc")
 
-# Re-read config
-CATALOG = dbutils.widgets.get("catalog")
-SCHEMA = dbutils.widgets.get("schema")
-FQ = f"{CATALOG}.{SCHEMA}"
-AGENT_LLM_ENDPOINT = dbutils.widgets.get("agent_llm_endpoint")
-LLM_ENDPOINT = dbutils.widgets.get("llm_endpoint")
-WHISPER_ENDPOINT = dbutils.widgets.get("whisper_endpoint")
-model_name = f"main.{SCHEMA}.higher_ed_advisory_agent"
+# # Re-read config
+# CATALOG = dbutils.widgets.get("catalog")
+# SCHEMA = dbutils.widgets.get("schema")
+# FQ = f"{CATALOG}.{SCHEMA}"
+# AGENT_LLM_ENDPOINT = dbutils.widgets.get("agent_llm_endpoint")
+# LLM_ENDPOINT = dbutils.widgets.get("llm_endpoint")
+# WHISPER_ENDPOINT = dbutils.widgets.get("whisper_endpoint")
+# model_name = f"main.{SCHEMA}.higher_ed_advisory_agent"
 
-# Re-write agent.py (uses the same agent_code variable from Stage 3 above)
-agent_path = "/Workspace/Users/chad.ammirati@databricks.com/Higher_Ed_Advisory_Services/agent.py"
-with open(agent_path, "w") as f:
-    f.write(agent_code.strip())
-print("agent.py re-written")
+# # Re-write agent.py (uses the same agent_code variable from Stage 3 above)
+# agent_path = "/Workspace/Users/chad.ammirati@databricks.com/Higher_Ed_Advisory_Services/agent.py"
+# with open(agent_path, "w") as f:
+#     f.write(agent_code.strip())
+# print("agent.py re-written")
 
-# Resources
-resources = [
-    DatabricksServingEndpoint(endpoint_name=AGENT_LLM_ENDPOINT),
-    DatabricksFunction(function_name=f"{FQ}.find_audio_file"),
-    DatabricksFunction(function_name=f"{FQ}.find_all_audio_files"),
-    DatabricksFunction(function_name=f"{FQ}.read_audio_base64"),
-    DatabricksFunction(function_name=f"{FQ}.transcribe_audio"),
-    DatabricksFunction(function_name=f"{FQ}.classify_call_category"),
-    DatabricksFunction(function_name=f"{FQ}.analyze_call_sentiment"),
-    DatabricksFunction(function_name=f"{FQ}.extract_topics_and_intent"),
-    DatabricksFunction(function_name=f"{FQ}.assess_rubric_rag"),
-    DatabricksFunction(function_name=f"{FQ}.transcribe_and_save_to_silver"),
-    DatabricksFunction(function_name=f"{FQ}.process_all_audio_to_silver"),
-    DatabricksFunction(function_name=f"{FQ}.enrich_silver_to_gold"),
-    DatabricksFunction(function_name=f"{FQ}.enrich_single_call"),
-]
+# # Resources
+# resources = [
+#     DatabricksServingEndpoint(endpoint_name=AGENT_LLM_ENDPOINT),
+#     DatabricksFunction(function_name=f"{FQ}.find_audio_file"),
+#     DatabricksFunction(function_name=f"{FQ}.find_all_audio_files"),
+#     DatabricksFunction(function_name=f"{FQ}.read_audio_base64"),
+#     DatabricksFunction(function_name=f"{FQ}.transcribe_audio"),
+#     DatabricksFunction(function_name=f"{FQ}.classify_call_category"),
+#     DatabricksFunction(function_name=f"{FQ}.analyze_call_sentiment"),
+#     DatabricksFunction(function_name=f"{FQ}.extract_topics_and_intent"),
+#     DatabricksFunction(function_name=f"{FQ}.assess_rubric_rag"),
+#     DatabricksFunction(function_name=f"{FQ}.transcribe_and_save_to_silver"),
+#     DatabricksFunction(function_name=f"{FQ}.process_all_audio_to_silver"),
+#     DatabricksFunction(function_name=f"{FQ}.enrich_silver_to_gold"),
+#     DatabricksFunction(function_name=f"{FQ}.enrich_single_call"),
+# ]
 
-# Log
-mlflow.set_experiment("/Workspace/Users/chad.ammirati@databricks.com/Higher_Ed_Advisory_Services/02_deploy")
-with mlflow.start_run(run_name="higher_ed_advisory_agent_redeploy"):
-    model_info = mlflow.pyfunc.log_model(
-        artifact_path="agent",
-        python_model="agent.py",
-        resources=resources,
-        pip_requirements=[
-            "mlflow[databricks]>=2.17.0",
-            "langgraph==0.3.4",
-            "databricks-langchain",
-            "unitycatalog-ai[databricks]",
-            "unitycatalog-langchain[databricks]",
-        ],
-    )
-print(f"Model logged: {model_info.model_uri}")
+# # Log
+# mlflow.set_experiment("/Workspace/Users/chad.ammirati@databricks.com/Higher_Ed_Advisory_Services/02_deploy")
+# with mlflow.start_run(run_name="higher_ed_advisory_agent_redeploy"):
+#     model_info = mlflow.pyfunc.log_model(
+#         artifact_path="agent",
+#         python_model="agent.py",
+#         resources=resources,
+#         pip_requirements=[
+#             "mlflow[databricks]>=2.17.0",
+#             "langgraph==0.3.4",
+#             "databricks-langchain",
+#             "unitycatalog-ai[databricks]",
+#             "unitycatalog-langchain[databricks]",
+#         ],
+#     )
+# print(f"Model logged: {model_info.model_uri}")
 
-# Register
-mv = mlflow.register_model(model_info.model_uri, model_name)
-print(f"Registered: {model_name} v{mv.version}")
+# # Register
+# mv = mlflow.register_model(model_info.model_uri, model_name)
+# print(f"Registered: {model_name} v{mv.version}")
 
-# Update endpoint
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.serving import ServedEntityInput
+# # Update endpoint
+# from databricks.sdk import WorkspaceClient
+# from databricks.sdk.service.serving import ServedEntityInput
 
-w = WorkspaceClient()
-w.serving_endpoints.update_config(
-    name="higher_ed_advisory_agent",
-    served_entities=[
-        ServedEntityInput(
-            entity_name=model_name,
-            entity_version=str(mv.version),
-            workload_size="Small",
-            scale_to_zero_enabled=True,
-        )
-    ],
-)
-print(f"Endpoint update initiated for version {mv.version}")
-print("Endpoint will take a few minutes to deploy the new version.")
+# w = WorkspaceClient()
+# w.serving_endpoints.update_config(
+#     name="higher_ed_advisory_agent",
+#     served_entities=[
+#         ServedEntityInput(
+#             entity_name=model_name,
+#             entity_version=str(mv.version),
+#             workload_size="Small",
+#             scale_to_zero_enabled=True,
+#         )
+#     ],
+# )
+# print(f"Endpoint update initiated for version {mv.version}")
+# print("Endpoint will take a few minutes to deploy the new version.")
