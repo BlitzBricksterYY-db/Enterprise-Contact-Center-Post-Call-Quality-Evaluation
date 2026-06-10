@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Higher Education Advisory Services — 03 Test (E2E)
 # MAGIC
@@ -18,10 +22,10 @@
 
 # DBTITLE 1,Configuration & Helpers
 
-dbutils.widgets.text("catalog", "chada_demos", "Unity Catalog")
-dbutils.widgets.text("schema", "higher_ed_advisory", "Schema")
+dbutils.widgets.text("catalog", "yyang", "Unity Catalog")
+dbutils.widgets.text("schema", "contact_center_qa", "Schema")
 dbutils.widgets.text("endpoint_name", "", "Deployed Endpoint Name (for post-deploy tests)")
-dbutils.widgets.text("warehouse_id", "4b9b953939869799", "SQL Warehouse ID")
+dbutils.widgets.text("warehouse_id", "8baced1ff014912d", "SQL Warehouse ID")
 
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
@@ -710,4 +714,3 @@ summary = f"Total={total} Pass={pass_count} Fail={fail_count} Skip={skip_count}"
 if failures:
     summary += " | FAILURES: " + " | ".join(failures)
 dbutils.notebook.exit(summary[:4000])
-
