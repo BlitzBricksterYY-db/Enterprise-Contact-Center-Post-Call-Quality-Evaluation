@@ -3,15 +3,18 @@
 # [tool.databricks.environment]
 # environment_version = "5"
 # ///
+# DBTITLE 1,Cell 1
 # MAGIC %md
-# MAGIC # Higher Education Advisory Services — 03 Test (E2E)
+# MAGIC # Enterprise Contact Center Post-Call QA — 03 Test (E2E)
 # MAGIC
 # MAGIC **Two-phase testing:**
-# MAGIC 1. **Pre-Deployment Tests** (Tests 1-9): Schema validation, rubric integrity, UC function
-# MAGIC    registration, mock transformations, agent tool wiring, direct SQL function tests, data lineage.
-# MAGIC 2. **Post-Deployment Tests** (Tests 10-12): Live endpoint health, tool invocation, gold data quality.
+# MAGIC 1. **Pre-Deployment Tests** (Tests 1-9): Delta table schema validation, rubric integrity, UC function
+# MAGIC    registration, mock bronze/silver/gold transformations, agent tool wiring, direct SQL function
+# MAGIC    smoke tests, data lineage checks.
+# MAGIC 2. **Post-Deployment Tests** (Tests 10-12): Live agent endpoint health, tool invocation (6 tools),
+# MAGIC    gold data quality (skipped until pipeline runs).
 # MAGIC
-# MAGIC Set the `endpoint_name` widget to enable post-deploy tests.
+# MAGIC Set the `endpoint_name` widget to `agents_yyang-contact_center_qa-contact_center_qa_agent` to enable post-deploy tests.
 
 # COMMAND ----------
 
@@ -403,11 +406,12 @@ except Exception as e:
 # DBTITLE 1,Test 7: Agent Tool Wiring (Local — All 10 Tools)
 
 print("\n" + "=" * 60)
-print("TEST 7: Agent Tool Wiring (Local -- All 10 Tools)")
+print("TEST 7: Agent Tool Wiring (Local -- All 12 Tools)")
 print("=" * 60)
 
 expected_names = sorted([
     "find_audio_file", "find_all_audio_files",
+    "read_audio_base64", "transcribe_audio",
     "transcribe_and_save_to_silver", "process_all_audio_to_silver",
     "enrich_silver_to_gold", "classify_call_category",
     "analyze_call_sentiment", "extract_topics_and_intent",
@@ -419,7 +423,7 @@ try:
     from databricks_langchain import UCFunctionToolkit
     toolkit = UCFunctionToolkit(function_names=fq_tool_names)
     tools = toolkit.tools
-    record_test("agent_tool_count", len(tools) == 10, f"loaded {len(tools)} tools (expected 10)")
+    record_test("agent_tool_count", len(tools) == 12, f"loaded {len(tools)} tools (expected 12)")
     tool_names_loaded = sorted([t.name for t in tools])
     for expected in expected_names:
         found = any(expected in tn for tn in tool_names_loaded)
@@ -433,7 +437,7 @@ except ImportError as ie:
     funcs = spark.sql(f"SHOW USER FUNCTIONS IN {FQ}").collect()
     registered = {f[0].split(".")[-1] for f in funcs}
     matched = sum(1 for n in expected_names if n in registered)
-    record_test("agent_tool_count", matched == 10, f"{matched}/10 in registry -- {note}")
+    record_test("agent_tool_count", matched == 12, f"{matched}/12 in registry -- {note}")
     for expected in expected_names:
         found = expected in registered
         record_test(f"agent_tool.{expected}", found,
