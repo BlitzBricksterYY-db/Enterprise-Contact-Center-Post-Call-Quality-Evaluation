@@ -333,8 +333,8 @@ if pending_gold_count == 0:
 # COMMAND ----------
 
 # DBTITLE 1,Phase 3: Enrich silver → gold_enriched_calls (single SQL pass)
-# BATCH_LIMIT: enrich N silver records per run — rerun to continue.
-BATCH_LIMIT = 20
+# BATCH_LIMIT: enrich N silver records per run — rerun to continue. None for run all.
+BATCH_LIMIT = None
 
 if pending_gold_count > 0:
     batch = min(BATCH_LIMIT, pending_gold_count) if BATCH_LIMIT else pending_gold_count
@@ -460,6 +460,16 @@ else:
 
 # COMMAND ----------
 
+idx    = w.vector_search_indexes.get_index(VS_INDEX)
+status = idx.status
+status
+
+# COMMAND ----------
+
+get_index_state(w, VS_INDEX)
+
+# COMMAND ----------
+
 # DBTITLE 1,Summary header
 # MAGIC %md
 # MAGIC ## Summary
@@ -499,63 +509,3 @@ if gold_ct > 0:
     print("=" * 55)
 
 dbutils.notebook.exit(f"bronze={bronze_ct} silver={silver_ct} gold={gold_ct} vs_indexed={vs_rows} vs_state={state}")
-
-# COMMAND ----------
-
-# DBTITLE 1,Diagnostics: transcribe_audio root-cause check
-# Read-only: confirm path format discrepancy before any mutation.
-rf_path = spark.sql("""
-    SELECT _metadata.file_path
-    FROM read_files('/Volumes/chada_demos/pubsec_demos/audio/*.wav', format => 'binaryFile')
-    LIMIT 1
-""").collect()[0][0]
-
-br_path = spark.sql(f"SELECT file_path FROM {FQ}.bronze_call_metadata LIMIT 1").collect()[0][0]
-
-print(f"read_files _metadata.file_path : {rf_path}")
-print(f"bronze_call_metadata file_path : {br_path}")
-print(f"Match?                         : {rf_path == br_path}")
-
-if rf_path != br_path:
-    print("\n⚠️  Path format mismatch is the root cause of NULL transcriptions.")
-    print("   Run the next cell to fix bronze_call_metadata and silver_transcriptions.")
-else:
-    # Paths match — test b64 directly
-    b64_len = spark.sql(f"SELECT length({FQ}.read_audio_base64('{br_path}')) AS l").collect()[0]['l']
-    print(f"\nb64_len = {b64_len}  ({'OK — file found' if b64_len else 'NULL — investigate further'})")
-
-# COMMAND ----------
-
-# DBTITLE 1,Fix: re-register read_audio_base64 with path normalization
-# Re-register read_audio_base64 with a normalised WHERE clause so it matches
-# regardless of whether the caller passes "/Volumes/..." or "dbfs:/Volumes/...".
-# This avoids any table mutation.
-
-spark.sql(f"DROP FUNCTION IF EXISTS {FQ}.read_audio_base64")
-spark.sql(f"""
-CREATE FUNCTION {FQ}.read_audio_base64(file_path STRING)
-RETURNS STRING
-COMMENT 'Reads an audio file from the Volume and returns its base64-encoded binary content for Whisper inference.'
-RETURN (
-  SELECT base64(content)
-  FROM read_files('/Volumes/chada_demos/pubsec_demos/audio/*.wav', format => 'binaryFile')
-  WHERE regexp_replace(_metadata.file_path, '^dbfs:', '')
-      = regexp_replace(read_audio_base64.file_path, '^dbfs:', '')
-  LIMIT 1
-)
-""")
-print("Re-registered: read_audio_base64 (path-normalised)")
-
-# Quick smoke-test: should now return a non-NULL base64 string
-test_path  = "/Volumes/chada_demos/pubsec_demos/audio/Jordan_Patel_001.wav"
-b64_len    = spark.sql(f"SELECT length({FQ}.read_audio_base64('{test_path}')) AS l").collect()[0]['l']
-print(f"Smoke test b64_len = {b64_len}  ({'\u2705 OK' if b64_len else '\u274c STILL NULL'})")
-
-# COMMAND ----------
-
-# DBTITLE 1,Smoke test: transcribe_audio end-to-end
-test_path = "/Volumes/chada_demos/pubsec_demos/audio/Jordan_Patel_001.wav"
-result = spark.sql(f"""
-    SELECT {FQ}.transcribe_audio('{test_path}') AS transcription
-""").collect()[0]['transcription']
-print(f"Transcription ({len(result or '')} chars):\n{result[:500] if result else 'NULL — Whisper call failed'}")
