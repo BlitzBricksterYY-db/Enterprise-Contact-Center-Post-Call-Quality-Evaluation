@@ -51,12 +51,29 @@ print(f"VS index       : {VS_INDEX}")
 # COMMAND ----------
 
 # DBTITLE 1,Phase 1: Ingest audio metadata → bronze_call_metadata
-import re, uuid
+import re, uuid, io, wave
 from datetime import datetime
 
 def normalize_volume_path(p: str) -> str:
     """dbutils returns dbfs:/Volumes/...; UC tables use /Volumes/..."""
     return re.sub(r'^dbfs:', '', p)
+
+def get_wav_duration(file_path: str) -> int | None:
+    """Return WAV duration in whole seconds by reading the file header.
+    UC Volume paths (/Volumes/...) are directly accessible via Python open().
+    Reads only the first 4 KB — sufficient for any standard WAV header.
+    Returns None on any error (non-WAV, corrupt header, permission issue).
+    """
+    try:
+        clean_path = re.sub(r'^dbfs:', '', file_path)
+        with open(clean_path, 'rb') as f:
+            header = f.read(4096)
+        with wave.open(io.BytesIO(header), 'rb') as wf:
+            frames = wf.getnframes()
+            rate   = wf.getframerate()
+            return int(frames / rate) if rate > 0 else None
+    except Exception:
+        return None
 
 # -- List .wav files in the Volume (metadata only, no audio bytes loaded) --
 try:
@@ -90,7 +107,7 @@ for file_path, filename, size in wav_files:
             "file_path":            file_path,
             "agent_id":             agent_id,
             "queue_type":           "Unknown",
-            "call_duration_seconds": None,
+            "call_duration_seconds": get_wav_duration(file_path),
             "call_timestamp":       datetime.now(),
             "file_size_bytes":      size,
             "ingested_at":          datetime.now(),
@@ -108,6 +125,55 @@ else:
 
 bronze_total = spark.sql(f"SELECT count(*) AS cnt FROM {FQ}.bronze_call_metadata").collect()[0]["cnt"]
 print(f"bronze_call_metadata total rows: {bronze_total}")
+
+# COMMAND ----------
+
+# DBTITLE 1,Backfill: call_duration_seconds for existing bronze rows
+# One-time backfill: populate call_duration_seconds for bronze rows where it is NULL.
+# get_wav_duration() reads the WAV header on the driver (UC Volume paths accessible via open()).
+# Uses MERGE so only NULL rows are touched — safe to re-run.
+
+null_rows = spark.sql(f"""
+    SELECT call_id, file_path
+    FROM {FQ}.bronze_call_metadata
+    WHERE call_duration_seconds IS NULL
+""").collect()
+
+print(f"Rows with NULL call_duration_seconds: {len(null_rows)}")
+
+if null_rows:
+    updates = []
+    for row in null_rows:
+        dur = get_wav_duration(row.file_path)
+        updates.append((row.call_id, row.file_path, dur))
+
+    ok  = sum(1 for *_, d in updates if d is not None)
+    bad = sum(1 for *_, d in updates if d is None)
+    print(f"  Resolved: {ok}  |  Still NULL (non-WAV / error): {bad}")
+
+    updates_df = spark.createDataFrame(updates, ["call_id", "file_path", "call_duration_seconds"])
+    updates_df.createOrReplaceTempView("_dur_backfill")
+
+    spark.sql(f"""
+        MERGE INTO {FQ}.bronze_call_metadata AS t
+        USING _dur_backfill AS s ON t.call_id = s.call_id
+        WHEN MATCHED AND t.call_duration_seconds IS NULL
+        THEN UPDATE SET t.call_duration_seconds = s.call_duration_seconds
+    """)
+
+    still_null = spark.sql(
+        f"SELECT count(*) AS cnt FROM {FQ}.bronze_call_metadata WHERE call_duration_seconds IS NULL"
+    ).collect()[0]["cnt"]
+    print(f"\u2705 Backfill complete. Rows still NULL: {still_null}")
+
+    display(spark.sql(f"""
+        SELECT filename, agent_id, call_duration_seconds
+        FROM {FQ}.bronze_call_metadata
+        ORDER BY call_duration_seconds DESC
+        LIMIT 15
+    """))
+else:
+    print("\u2705 No NULL durations — nothing to backfill.")
 
 # COMMAND ----------
 
