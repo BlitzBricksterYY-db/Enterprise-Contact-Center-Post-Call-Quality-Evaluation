@@ -1,0 +1,1138 @@
+{
+  "datasets": [
+    {
+      "name": "ds_daily_trend",
+      "displayName": "Daily QA Trend",
+      "queryLines": [
+        "SELECT\n",
+        "  DATE_TRUNC('DAY', s.transcribed_at) as eval_date,\n",
+        "  COUNT(*) as calls_evaluated,\n",
+        "  ROUND(AVG(g.overall_qa_score), 2) as avg_score\n",
+        "FROM\n",
+        "  gold_enriched_calls g\n",
+        "    JOIN silver_transcriptions s\n",
+        "      ON g.call_id = s.call_id\n",
+        "GROUP BY\n",
+        "  DATE_TRUNC('DAY', s.transcribed_at)\n",
+        "ORDER BY\n",
+        "  eval_date"
+      ],
+      "catalog": "yyang",
+      "schema": "contact_center_qa"
+    },
+    {
+      "name": "ds_sentiment_by_category",
+      "displayName": "Sentiment by Call Category",
+      "queryLines": [
+        "SELECT\n",
+        "  call_category,\n",
+        "  sentiment,\n",
+        "  COUNT(*) as call_count,\n",
+        "  ROUND(AVG(overall_qa_score), 2) as avg_qa_score\n",
+        "FROM\n",
+        "  gold_enriched_calls\n",
+        "GROUP BY\n",
+        "  call_category,\n",
+        "  sentiment\n",
+        "ORDER BY\n",
+        "  call_category,\n",
+        "  sentiment"
+      ],
+      "catalog": "yyang",
+      "schema": "contact_center_qa"
+    },
+    {
+      "name": "ds_flagged",
+      "displayName": "Flagged Calls",
+      "queryLines": [
+        "SELECT\n",
+        "  call_id,\n",
+        "  agent_id,\n",
+        "  queue_type,\n",
+        "  call_category,\n",
+        "  overall_qa_score,\n",
+        "  compliance_flags,\n",
+        "  coaching_notes\n",
+        "FROM\n",
+        "  gold_enriched_calls\n",
+        "WHERE\n",
+        "  requires_human_review = true\n",
+        "ORDER BY\n",
+        "  overall_qa_score ASC\n",
+        "LIMIT 100"
+      ],
+      "catalog": "yyang",
+      "schema": "contact_center_qa"
+    },
+    {
+      "name": "ds_agent_perf",
+      "displayName": "Agent Performance",
+      "queryLines": [
+        "SELECT\n",
+        "  agent_id,\n",
+        "  COUNT(*) as calls_evaluated,\n",
+        "  ROUND(AVG(overall_qa_score), 2) as avg_score,\n",
+        "  ROUND(AVG(greeting_score), 2) as avg_greeting,\n",
+        "  ROUND(AVG(empathy_score), 2) as avg_empathy,\n",
+        "  ROUND(AVG(accuracy_score), 2) as avg_accuracy,\n",
+        "  ROUND(AVG(escalation_score), 2) as avg_escalation,\n",
+        "  ROUND(AVG(compliance_score), 2) as avg_compliance,\n",
+        "  COUNT(\n",
+        "    CASE\n",
+        "      WHEN requires_human_review THEN 1\n",
+        "    END\n",
+        "  ) as flagged_calls\n",
+        "FROM\n",
+        "  gold_enriched_calls\n",
+        "GROUP BY\n",
+        "  agent_id\n",
+        "ORDER BY\n",
+        "  avg_score DESC"
+      ],
+      "catalog": "yyang",
+      "schema": "contact_center_qa"
+    },
+    {
+      "name": "ds_queue_perf",
+      "displayName": "Queue Performance",
+      "queryLines": [
+        "SELECT\n",
+        "  queue_type,\n",
+        "  COUNT(*) as total_calls,\n",
+        "  ROUND(AVG(overall_qa_score), 2) as avg_score,\n",
+        "  ROUND(AVG(greeting_score), 2) as avg_greeting,\n",
+        "  ROUND(AVG(empathy_score), 2) as avg_empathy,\n",
+        "  ROUND(AVG(accuracy_score), 2) as avg_accuracy,\n",
+        "  ROUND(AVG(escalation_score), 2) as avg_escalation,\n",
+        "  ROUND(AVG(compliance_score), 2) as avg_compliance\n",
+        "FROM\n",
+        "  gold_enriched_calls\n",
+        "GROUP BY\n",
+        "  queue_type\n",
+        "ORDER BY\n",
+        "  avg_score DESC"
+      ],
+      "catalog": "yyang",
+      "schema": "contact_center_qa"
+    },
+    {
+      "name": "ds_sentiment",
+      "displayName": "Sentiment Distribution",
+      "queryLines": [
+        "SELECT\n",
+        "  sentiment,\n",
+        "  COUNT(*) as call_count\n",
+        "FROM\n",
+        "  gold_enriched_calls\n",
+        "GROUP BY\n",
+        "  sentiment"
+      ],
+      "catalog": "yyang",
+      "schema": "contact_center_qa"
+    },
+    {
+      "name": "ds_kpis",
+      "displayName": "KPI Summary",
+      "queryLines": [
+        "SELECT\n",
+        "  COUNT(*) as total_calls,\n",
+        "  ROUND(AVG(overall_qa_score), 2) as avg_qa_score,\n",
+        "  COUNT(\n",
+        "    CASE\n",
+        "      WHEN requires_human_review THEN 1\n",
+        "    END\n",
+        "  ) as flagged_calls,\n",
+        "  ROUND(\n",
+        "    COUNT(\n",
+        "      CASE\n",
+        "        WHEN overall_qa_score >= 4 THEN 1\n",
+        "      END\n",
+        "    )\n",
+        "      * 100.0\n",
+        "      / COUNT(*),\n",
+        "    1\n",
+        "  ) as pct_excellent\n",
+        "FROM\n",
+        "  gold_enriched_calls"
+      ],
+      "catalog": "yyang",
+      "schema": "contact_center_qa"
+    }
+  ],
+  "pages": [
+    {
+      "name": "63135c3e",
+      "displayName": "Executive Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "title_header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Contact Center QA Analytics"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "title_subtitle",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Supervisor performance overview across agents, queues, and evaluation criteria"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_total_calls",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "total_calls",
+                      "expression": "`total_calls`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Total Calls",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_calls",
+                  "displayName": "Total Calls"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_avg_qa",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "avg_qa_score",
+                      "expression": "`avg_qa_score`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Avg QA Score",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_qa_score",
+                  "displayName": "Avg QA Score"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_flagged",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "flagged_calls",
+                      "expression": "`flagged_calls`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Flagged for Review",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "flagged_calls",
+                  "displayName": "Flagged for Review"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "section_trends",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Trends & Sentiment"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "line_daily_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_daily_trend",
+                  "fields": [
+                    {
+                      "name": "eval_date",
+                      "expression": "`eval_date`"
+                    },
+                    {
+                      "name": "avg_score",
+                      "expression": "`avg_score`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Daily QA Score Trend",
+                "showTitle": true
+              },
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "eval_date",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "avg_score",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "pie_sentiment",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_sentiment",
+                  "fields": [
+                    {
+                      "name": "call_count",
+                      "expression": "`call_count`"
+                    },
+                    {
+                      "name": "sentiment",
+                      "expression": "`sentiment`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Sentiment Distribution",
+                "showTitle": true
+              },
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "call_count",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "sentiment",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "section_queue",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Performance by Queue"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_queue_score",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_queue_perf",
+                  "fields": [
+                    {
+                      "name": "queue_type",
+                      "expression": "`queue_type`"
+                    },
+                    {
+                      "name": "avg_score",
+                      "expression": "`avg_score`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Avg QA Score by Queue",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "queue_type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "avg_score",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 4,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "section_agents",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Agent Leaderboard"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "table_agent_perf",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_agent_perf",
+                  "fields": [
+                    {
+                      "name": "agent_id",
+                      "expression": "`agent_id`"
+                    },
+                    {
+                      "name": "calls_evaluated",
+                      "expression": "`calls_evaluated`"
+                    },
+                    {
+                      "name": "avg_score",
+                      "expression": "`avg_score`"
+                    },
+                    {
+                      "name": "avg_greeting",
+                      "expression": "`avg_greeting`"
+                    },
+                    {
+                      "name": "avg_empathy",
+                      "expression": "`avg_empathy`"
+                    },
+                    {
+                      "name": "avg_accuracy",
+                      "expression": "`avg_accuracy`"
+                    },
+                    {
+                      "name": "avg_escalation",
+                      "expression": "`avg_escalation`"
+                    },
+                    {
+                      "name": "avg_compliance",
+                      "expression": "`avg_compliance`"
+                    },
+                    {
+                      "name": "flagged_calls",
+                      "expression": "`flagged_calls`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Agent Performance",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "agent_id",
+                    "displayName": "Agent"
+                  },
+                  {
+                    "fieldName": "calls_evaluated",
+                    "displayName": "Calls Evaluated"
+                  },
+                  {
+                    "fieldName": "avg_score",
+                    "displayName": "Avg QA Score"
+                  },
+                  {
+                    "fieldName": "avg_greeting",
+                    "displayName": "Greeting"
+                  },
+                  {
+                    "fieldName": "avg_empathy",
+                    "displayName": "Empathy"
+                  },
+                  {
+                    "fieldName": "avg_accuracy",
+                    "displayName": "Accuracy"
+                  },
+                  {
+                    "fieldName": "avg_escalation",
+                    "displayName": "Escalation"
+                  },
+                  {
+                    "fieldName": "avg_compliance",
+                    "displayName": "Compliance"
+                  },
+                  {
+                    "fieldName": "flagged_calls",
+                    "displayName": "Flagged"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 18,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "section_flagged",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Calls Requiring Human Review"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 24,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "table_flagged",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_flagged",
+                  "fields": [
+                    {
+                      "name": "call_id",
+                      "expression": "`call_id`"
+                    },
+                    {
+                      "name": "agent_id",
+                      "expression": "`agent_id`"
+                    },
+                    {
+                      "name": "queue_type",
+                      "expression": "`queue_type`"
+                    },
+                    {
+                      "name": "call_category",
+                      "expression": "`call_category`"
+                    },
+                    {
+                      "name": "overall_qa_score",
+                      "expression": "`overall_qa_score`"
+                    },
+                    {
+                      "name": "compliance_flags",
+                      "expression": "`compliance_flags`"
+                    },
+                    {
+                      "name": "coaching_notes",
+                      "expression": "`coaching_notes`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Flagged Calls",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "call_id",
+                    "displayName": "Call ID"
+                  },
+                  {
+                    "fieldName": "agent_id",
+                    "displayName": "Agent"
+                  },
+                  {
+                    "fieldName": "queue_type",
+                    "displayName": "Queue"
+                  },
+                  {
+                    "fieldName": "call_category",
+                    "displayName": "Category"
+                  },
+                  {
+                    "fieldName": "overall_qa_score",
+                    "displayName": "QA Score"
+                  },
+                  {
+                    "fieldName": "compliance_flags",
+                    "displayName": "Compliance Flags"
+                  },
+                  {
+                    "fieldName": "coaching_notes",
+                    "displayName": "Coaching Notes"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 25,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "genie_link",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## 💬 Ask Questions with Natural Language\n",
+                "\n",
+                "Explore this data interactively using the **[Contact Center QA Analytics Genie Space](https://e2-demo-field-eng.cloud.databricks.com/genie/rooms/01f165553d7c1e42912a2dba295d3006)**. Ask questions like:\n",
+                "* *\"Which agent has the lowest compliance score this week?\"*\n",
+                "* *\"How many Technical calls were flagged for review?\"*\n",
+                "* *\"Show me agents with avg empathy score below 1.0\"*\n",
+                "* *\"What percentage of Sales calls had positive sentiment?\"*"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 31,
+            "width": 12,
+            "height": 3
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "sentiment_categories",
+      "displayName": "Sentiment & Categories",
+      "layout": [
+        {
+          "widget": {
+            "name": "title_header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Sentiment & Call Category Analysis"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "title_subtitle",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Customer sentiment and QA score distribution by call type and department"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "section_sentiment",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Sentiment by Call Category"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_sentiment_category",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_sentiment_by_category",
+                  "fields": [
+                    {
+                      "name": "sentiment",
+                      "expression": "`sentiment`"
+                    },
+                    {
+                      "name": "call_category",
+                      "expression": "`call_category`"
+                    },
+                    {
+                      "name": "call_count",
+                      "expression": "`call_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Call Count by Category & Sentiment",
+                "showTitle": true
+              },
+              "mark": {
+                "layout": "stack"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "call_category",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "call_count",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "sentiment",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "section_queue_criteria",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## QA Score by Queue & Criterion"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_greeting_queue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_queue_perf",
+                  "fields": [
+                    {
+                      "name": "queue_type",
+                      "expression": "`queue_type`"
+                    },
+                    {
+                      "name": "avg_greeting",
+                      "expression": "`avg_greeting`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Avg Greeting Score by Queue",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "queue_type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "avg_greeting",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_compliance_queue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_queue_perf",
+                  "fields": [
+                    {
+                      "name": "queue_type",
+                      "expression": "`queue_type`"
+                    },
+                    {
+                      "name": "avg_compliance",
+                      "expression": "`avg_compliance`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Avg Compliance Score by Queue",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "queue_type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "avg_compliance",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 10,
+            "width": 3,
+            "height": 5
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "canvasBackgroundColor": {
+        "light": "#FFFFFF",
+        "dark": "#FFFFFF"
+      },
+      "widgetBackgroundColor": {
+        "light": "#FFFFFF",
+        "dark": "#FFFFFF"
+      },
+      "widgetBorderColor": {
+        "light": "#94A3B8",
+        "dark": "#94A3B8"
+      },
+      "fontColor": {
+        "light": "#111827",
+        "dark": "#111827"
+      },
+      "selectionColor": {
+        "light": "#1D4ED8",
+        "dark": "#1D4ED8"
+      },
+      "visualizationColors": [
+        "#1D4ED8",
+        "#059669",
+        "#D97706",
+        "#DC2626",
+        "#7C3AED",
+        "#0891B2",
+        "#65A30D",
+        "#E11D48"
+      ],
+      "widgetHeaderAlignment": "LEFT",
+      "fontFamily": "Inter",
+      "textBoxVerticalAlign": "VERTICAL_ALIGN_TOP",
+      "widgetPadding": 16,
+      "widgetMargin": 8,
+      "widgetCornerRadius": 12,
+      "widgetShadow": 10,
+      "fontSettings": {
+        "base": {
+          "fontFamily": "Inter",
+          "textCase": "TEXT_CASE_UNSPECIFIED",
+          "fontColor": {
+            "light": "#111827",
+            "dark": "#111827"
+          },
+          "fontSize": 13,
+          "fontWeight": 500
+        },
+        "widgetTitle": {
+          "fontFamily": "Inter",
+          "textCase": "TEXT_CASE_UNSPECIFIED",
+          "fontColor": {
+            "light": "#111827",
+            "dark": "#111827"
+          },
+          "fontSize": 18,
+          "fontWeight": 700
+        },
+        "widgetDescription": {
+          "fontFamily": "Inter",
+          "textCase": "TEXT_CASE_UNSPECIFIED",
+          "fontColor": {
+            "light": "#374151",
+            "dark": "#374151"
+          },
+          "fontSize": 12,
+          "fontWeight": 500
+        },
+        "fieldTitle": {
+          "fontFamily": "Inter",
+          "textCase": "TEXT_CASE_UPPERCASE",
+          "fontColor": {
+            "light": "#111827",
+            "dark": "#111827"
+          },
+          "fontSize": 12,
+          "fontWeight": 700
+        },
+        "fieldValue": {
+          "fontFamily": "Inter",
+          "textCase": "TEXT_CASE_UNSPECIFIED",
+          "fontColor": {
+            "light": "#111827",
+            "dark": "#111827"
+          },
+          "fontSize": 16,
+          "fontWeight": 800
+        }
+      },
+      "gridLineColor": {
+        "light": "#CBD5E1",
+        "dark": "#CBD5E1"
+      },
+      "axisLineColor": {
+        "light": "#475569",
+        "dark": "#475569"
+      }
+    },
+    "applyModeEnabled": false
+  }
+}
