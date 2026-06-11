@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # DBTITLE 1,Header
 # MAGIC %md
 # MAGIC # 04 — Batch Pipeline: Bronze → Silver → Gold → VS Index Sync
@@ -137,8 +141,11 @@ if not pending_silver:
 # COMMAND ----------
 
 # DBTITLE 1,Phase 2: Run transcription (SQL INSERT via UC function)
-# Use a single SQL INSERT...WITH to call transcribe_audio for all pending files.
-# Databricks can execute these ai_query calls in parallel across partitions.
+# Use a single SQL INSERT...WITH to call transcribe_audio for pending files.
+# BATCH_LIMIT: process N files per run — increase or set to None for all at once.
+# Rerun this cell to continue processing remaining files.
+BATCH_LIMIT = None
+
 if pending_silver:
     print(f"Transcribing {len(pending_silver)} file(s)... (this may take several minutes)")
 
@@ -148,6 +155,8 @@ if pending_silver:
             SELECT b.call_id, b.filename, b.file_path, b.agent_id, b.call_duration_seconds
             FROM   {FQ}.bronze_call_metadata b
             LEFT ANTI JOIN {FQ}.silver_transcriptions s ON b.file_path = s.file_path
+            ORDER BY b.filename
+            {'LIMIT ' + str(BATCH_LIMIT) if BATCH_LIMIT else ''}
         ),
         transcribed AS (
             SELECT
@@ -258,8 +267,13 @@ if pending_gold_count == 0:
 # COMMAND ----------
 
 # DBTITLE 1,Phase 3: Enrich silver → gold_enriched_calls (single SQL pass)
+# BATCH_LIMIT: enrich N silver records per run — rerun to continue.
+BATCH_LIMIT = 20
+
 if pending_gold_count > 0:
-    print(f"Enriching {pending_gold_count} record(s)... (4 AI calls per record, ~30-120 s each)")
+    batch = min(BATCH_LIMIT, pending_gold_count) if BATCH_LIMIT else pending_gold_count
+    print(f"Enriching {batch} of {pending_gold_count} pending record(s) (BATCH_LIMIT={BATCH_LIMIT})...")
+    print("4 AI calls per record, ~30-120 s each")
 
     criterion_sql = ",\n        ".join(criterion_exprs)
 
@@ -274,6 +288,8 @@ if pending_gold_count > 0:
         LEFT ANTI JOIN {FQ}.gold_enriched_calls g ON s.file_path = g.file_path
         WHERE  s.transcription IS NOT NULL
           AND  length(trim(s.transcription)) > 10
+        ORDER BY s.filename
+        {'LIMIT ' + str(BATCH_LIMIT) if BATCH_LIMIT else ''}
     ),
     enriched AS (
         SELECT
@@ -336,39 +352,45 @@ if pending_gold_count > 0:
 # COMMAND ----------
 
 # DBTITLE 1,Phase 4: Trigger VS index sync + poll to ONLINE
+# Use the pre-installed Databricks SDK (no extra pip needed)
 import time
-from databricks.vector_search.client import VectorSearchClient
+from databricks.sdk import WorkspaceClient
 
-vsc = VectorSearchClient()
+w = WorkspaceClient()
 
-# -- Check current index state before sync --
-def get_index_state(vsc, endpoint, index_name):
-    desc = vsc.get_index(endpoint_name=endpoint, index_name=index_name).describe()
-    status = desc.get("status", {})
-    return (
-        status.get("detailed_state", "UNKNOWN"),
-        status.get("indexed_row_count", 0),
-        status.get("message", ""),
-    )
+def get_index_state(w, index_name):
+    """Returns (state_str, indexed_row_count, message).
+    SDK VectorIndexStatus exposes `ready` (bool), NOT `detailed_state`.
+    We map ready=True -> 'ONLINE', False -> 'SYNCING'.
+    """
+    idx    = w.vector_search_indexes.get_index(index_name)
+    status = idx.status
+    if status is None:
+        return "UNKNOWN", 0, ""
+    ready = bool(getattr(status, 'ready', False))
+    rows  = int(getattr(status, 'indexed_row_count', 0) or 0)
+    msg   = str(getattr(status, 'message', '') or '')
+    return ("ONLINE" if ready else "SYNCING"), rows, msg
 
-state, rows, msg = get_index_state(vsc, VS_ENDPOINT, VS_INDEX)
+state, rows, msg = get_index_state(w, VS_INDEX)
 print(f"Before sync: state={state}, indexed_rows={rows}")
+if msg:
+    print(f"  {msg}")
 
-# -- Trigger sync --
-print(f"Triggering sync on {VS_INDEX} ...")
-vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=VS_INDEX).sync()
-print("Sync triggered. Polling for completion...")
+# Trigger sync
+print(f"\nTriggering sync on {VS_INDEX} ...")
+w.vector_search_indexes.sync_index(VS_INDEX)
+print("Sync triggered. Polling every 30 s (max 10 min)...")
 
-# -- Poll until ONLINE with no pending updates (max 10 min) --
 for attempt in range(20):
     time.sleep(30)
-    state, rows, msg = get_index_state(vsc, VS_ENDPOINT, VS_INDEX)
-    print(f"[{attempt+1:02d}] state={state:40s}  indexed_rows={rows}  msg={msg[:60]}")
-    if "ONLINE" in state and "PENDING" not in state:
-        print(f"\n\u2705 VS index ONLINE and up-to-date! indexed_rows={rows}")
+    state, rows, msg = get_index_state(w, VS_INDEX)
+    print(f"[{attempt+1:02d}] state={state:<12}  indexed_rows={rows}")
+    if state == "ONLINE":
+        print(f"\n\u2705 VS index ONLINE! indexed_rows={rows}")
         break
 else:
-    print(f"\u26a0\ufe0f  Sync still in progress after polling; last state={state}. Check the VS UI.")
+    print(f"\u26a0\ufe0f  Still syncing after 10 min; last state={state}, rows={rows}")
 
 # COMMAND ----------
 
@@ -383,7 +405,7 @@ bronze_ct = spark.sql(f"SELECT count(*) AS cnt FROM {FQ}.bronze_call_metadata").
 silver_ct = spark.sql(f"SELECT count(*) AS cnt FROM {FQ}.silver_transcriptions").collect()[0]["cnt"]
 gold_ct   = spark.sql(f"SELECT count(*) AS cnt FROM {FQ}.gold_enriched_calls").collect()[0]["cnt"]
 
-state, vs_rows, _ = get_index_state(vsc, VS_ENDPOINT, VS_INDEX)
+state, vs_rows, _ = get_index_state(w, VS_INDEX)
 
 print("=" * 55)
 print("  BATCH PIPELINE SUMMARY")
@@ -414,3 +436,60 @@ dbutils.notebook.exit(f"bronze={bronze_ct} silver={silver_ct} gold={gold_ct} vs_
 
 # COMMAND ----------
 
+# DBTITLE 1,Diagnostics: transcribe_audio root-cause check
+# Read-only: confirm path format discrepancy before any mutation.
+rf_path = spark.sql("""
+    SELECT _metadata.file_path
+    FROM read_files('/Volumes/chada_demos/pubsec_demos/audio/*.wav', format => 'binaryFile')
+    LIMIT 1
+""").collect()[0][0]
+
+br_path = spark.sql(f"SELECT file_path FROM {FQ}.bronze_call_metadata LIMIT 1").collect()[0][0]
+
+print(f"read_files _metadata.file_path : {rf_path}")
+print(f"bronze_call_metadata file_path : {br_path}")
+print(f"Match?                         : {rf_path == br_path}")
+
+if rf_path != br_path:
+    print("\n⚠️  Path format mismatch is the root cause of NULL transcriptions.")
+    print("   Run the next cell to fix bronze_call_metadata and silver_transcriptions.")
+else:
+    # Paths match — test b64 directly
+    b64_len = spark.sql(f"SELECT length({FQ}.read_audio_base64('{br_path}')) AS l").collect()[0]['l']
+    print(f"\nb64_len = {b64_len}  ({'OK — file found' if b64_len else 'NULL — investigate further'})")
+
+# COMMAND ----------
+
+# DBTITLE 1,Fix: re-register read_audio_base64 with path normalization
+# Re-register read_audio_base64 with a normalised WHERE clause so it matches
+# regardless of whether the caller passes "/Volumes/..." or "dbfs:/Volumes/...".
+# This avoids any table mutation.
+
+spark.sql(f"DROP FUNCTION IF EXISTS {FQ}.read_audio_base64")
+spark.sql(f"""
+CREATE FUNCTION {FQ}.read_audio_base64(file_path STRING)
+RETURNS STRING
+COMMENT 'Reads an audio file from the Volume and returns its base64-encoded binary content for Whisper inference.'
+RETURN (
+  SELECT base64(content)
+  FROM read_files('/Volumes/chada_demos/pubsec_demos/audio/*.wav', format => 'binaryFile')
+  WHERE regexp_replace(_metadata.file_path, '^dbfs:', '')
+      = regexp_replace(read_audio_base64.file_path, '^dbfs:', '')
+  LIMIT 1
+)
+""")
+print("Re-registered: read_audio_base64 (path-normalised)")
+
+# Quick smoke-test: should now return a non-NULL base64 string
+test_path  = "/Volumes/chada_demos/pubsec_demos/audio/Jordan_Patel_001.wav"
+b64_len    = spark.sql(f"SELECT length({FQ}.read_audio_base64('{test_path}')) AS l").collect()[0]['l']
+print(f"Smoke test b64_len = {b64_len}  ({'\u2705 OK' if b64_len else '\u274c STILL NULL'})")
+
+# COMMAND ----------
+
+# DBTITLE 1,Smoke test: transcribe_audio end-to-end
+test_path = "/Volumes/chada_demos/pubsec_demos/audio/Jordan_Patel_001.wav"
+result = spark.sql(f"""
+    SELECT {FQ}.transcribe_audio('{test_path}') AS transcription
+""").collect()[0]['transcription']
+print(f"Transcription ({len(result or '')} chars):\n{result[:500] if result else 'NULL — Whisper call failed'}")
