@@ -791,14 +791,14 @@
             "name": "title_header",
             "multilineTextboxSpec": {
               "lines": [
-                "## Sentiment & Call Category Analysis"
+                "## 📊 Sentiment & Call Category Analysis"
               ]
             }
           },
           "position": {
             "x": 0,
             "y": 0,
-            "width": 6,
+            "width": 12,
             "height": 1
           }
         },
@@ -814,13 +814,13 @@
           "position": {
             "x": 0,
             "y": 1,
-            "width": 6,
+            "width": 12,
             "height": 1
           }
         },
         {
           "widget": {
-            "name": "section_sentiment",
+            "name": "section_sentiment_cards",
             "multilineTextboxSpec": {
               "lines": [
                 "## Sentiment by Call Category"
@@ -830,30 +830,778 @@
           "position": {
             "x": 0,
             "y": 2,
-            "width": 6,
+            "width": 12,
             "height": 1
           }
         },
         {
           "widget": {
-            "name": "bar_sentiment_category",
+            "name": "card_other",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🗂️ Other\n",
+                "\n",
+                "| Sentiment | Calls | Avg QA |\n",
+                "|---|---|---|\n",
+                "| Neutral | **12** | 0.83 |\n",
+                "| Positive | **7** | 0.71 |\n",
+                "\n",
+                "**Total: 19 calls**"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "card_sales",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 💼 Sales\n",
+                "\n",
+                "| Sentiment | Calls | Avg QA |\n",
+                "|---|---|---|\n",
+                "| Neutral | **2** | 0.50 |\n",
+                "| Positive | **3** | 0.67 |\n",
+                "\n",
+                "**Total: 5 calls**"
+              ]
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 3,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "card_support",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🎧 Support\n",
+                "\n",
+                "| Sentiment | Calls | Avg QA |\n",
+                "|---|---|---|\n",
+                "| Neutral | **1** | 1.00 |\n",
+                "| Positive | **5** | 2.20 |\n",
+                "\n",
+                "**Total: 6 calls**  \n",
+                "✅ Highest avg QA: 2.20 (Positive)"
+              ]
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 3,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "card_technical",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🔧 Technical\n",
+                "\n",
+                "| Sentiment | Calls | Avg QA |\n",
+                "|---|---|---|\n",
+                "| Neutral | **239** | 0.91 |\n",
+                "| Positive | **33** | 0.76 |\n",
+                "\n",
+                "**Total: 272 calls**  \n",
+                "⚠️ Dominates 90% of all volume"
+              ]
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 3,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "sentiment_summary_card",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Key Takeaway — Sentiment Distribution\n",
+                "\n",
+                "🔵 **Technical** calls dominate volume: **272 of 302** calls (90%)\n",
+                "\n",
+                "📌 **Support** calls have the best QA quality when positive sentiment is present (avg score **2.20**)\n",
+                "\n",
+                "📌 Only **2 sentiments** observed across all categories: Neutral and Positive. No Negative or Mixed calls are present in this data slice."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "section_qa_criteria",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## QA Score Breakdown by Evaluation Criterion"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "card_greeting",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 👋 Greeting\n",
+                "\n",
+                "**Queue: Unknown**  \n",
+                "# 0.83\n",
+                "\n",
+                "_Avg greeting score across 302 calls_\n",
+                "\n",
+                "Agents typically meet the minimum greeting standard."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "card_empathy",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🤝 Empathy\n",
+                "\n",
+                "**Queue: Unknown**  \n",
+                "# 0.84\n",
+                "\n",
+                "_Avg empathy score across 302 calls_\n",
+                "\n",
+                "Marginally stronger than greeting & compliance."
+              ]
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 12,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "card_accuracy",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🎯 Accuracy\n",
+                "\n",
+                "**Queue: Unknown**  \n",
+                "# 0.94\n",
+                "\n",
+                "_Avg accuracy score across 302 calls_\n",
+                "\n",
+                "✅ **Best performing criterion** across all agents."
+              ]
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 12,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "card_compliance",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 📋 Compliance\n",
+                "\n",
+                "**Queue: Unknown**  \n",
+                "# 0.83\n",
+                "\n",
+                "_Avg compliance score across 302 calls_\n",
+                "\n",
+                "⚠️ 239 of 302 calls flagged for human review."
+              ]
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 12,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "criteria_summary_card",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Key Takeaway — Evaluation Criteria\n",
+                "\n",
+                "🏆 **Accuracy (0.94)** is the strongest criterion, followed by Empathy (0.84)\n",
+                "\n",
+                "⚠️ **Greeting, Empathy, Escalation and Compliance** are all clustered at 0.83 — coaching opportunity across all agents\n",
+                "\n",
+                "📌 **79% of calls** require human review despite passing some criteria — suggests scoring scale or threshold miscalibration worth investigating"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "genie_link_p2",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## 💬 Ask Questions with Natural Language\n",
+                "\n",
+                "Explore this data interactively using the **[Contact Center QA Analytics Genie Space](https://e2-demo-field-eng.cloud.databricks.com/genie/rooms/01f165553d7c1e42912a2dba295d3006)**. Ask questions like:\n",
+                "* *\"Which call category has the highest avg QA score?\"*\n",
+                "* *\"Break down sentiment counts by agent and category\"*\n",
+                "* *\"Show me all Support calls with Positive sentiment\"*\n",
+                "* *\"How many Technical calls scored above 1.0?\"*"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 12,
+            "height": 3
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "flagged_deepdive",
+      "displayName": "Flagged Call Deep-Dives",
+      "layout": [
+        {
+          "widget": {
+            "name": "title_header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## 🚨 Flagged Call Deep-Dives"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "title_subtitle",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Detailed analysis of the 239 calls flagged for human review — categorised by agent, call type, and compliance failure patterns"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "section_summary",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Flagged Call Summary"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_total_flagged",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Total Flagged\n",
+                "# 239\n",
+                "_79.1% of all 302 calls_\n",
+                "\n",
+                "⚠️ Nearly 4 in 5 calls require human review"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_top_agent",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Highest Review Volume\n",
+                "# agent_002\n",
+                "_82 flagged calls (34%)_\n",
+                "\n",
+                "Closely followed by agent_000 with 73"
+              ]
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 3,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_top_category",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Top Flagged Category\n",
+                "# Technical\n",
+                "_217 of 239 flagged (91%)_\n",
+                "\n",
+                "Dominates review queue by a wide margin"
+              ]
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 3,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_avg_qa_flagged",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Avg QA Score (Flagged)\n",
+                "# 1.09\n",
+                "_vs 0.90 all calls_\n",
+                "\n",
+                "Agent_008 flagged calls avg highest at 1.50"
+              ]
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 3,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "section_category",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Flagged Calls by Category"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "card_cat_technical",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🔧 Technical\n",
+                "\n",
+                "| Metric | Value |\n",
+                "|---|---|\n",
+                "| Flagged calls | **217** |\n",
+                "| % of all flagged | **90.8%** |\n",
+                "| Avg QA score | **1.09** |\n",
+                "| Avg compliance | **1.01** |\n",
+                "\n",
+                "⚠️ Overwhelmingly the largest review category"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "card_cat_other",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🗂️ Other\n",
+                "\n",
+                "| Metric | Value |\n",
+                "|---|---|\n",
+                "| Flagged calls | **15** |\n",
+                "| % of all flagged | **6.3%** |\n",
+                "| Avg QA score | **1.00** |\n",
+                "| Avg compliance | **1.00** |\n",
+                "\n",
+                "Low QA score on flagged calls — uniform criterion failures"
+              ]
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 8,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "card_cat_support",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🎧 Support\n",
+                "\n",
+                "| Metric | Value |\n",
+                "|---|---|\n",
+                "| Flagged calls | **4** |\n",
+                "| % of all flagged | **1.7%** |\n",
+                "| Avg QA score | **1.75** |\n",
+                "| Avg compliance | **1.00** |\n",
+                "\n",
+                "✅ Fewest flagged but highest avg QA when reviewed"
+              ]
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 8,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "card_cat_sales",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 💼 Sales\n",
+                "\n",
+                "| Metric | Value |\n",
+                "|---|---|\n",
+                "| Flagged calls | **3** |\n",
+                "| % of all flagged | **1.3%** |\n",
+                "| Avg QA score | **1.00** |\n",
+                "| Avg compliance | **1.00** |\n",
+                "\n",
+                "Small volume but all flagged calls score uniformly low"
+              ]
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 8,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "section_compliance",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Common Compliance Failure Patterns"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "card_compliance_flags",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Most Frequently Observed Compliance Flags _(from AI-evaluated call sample)_\n",
+                "\n",
+                "| Compliance Flag | Coaching Focus |\n",
+                "|---|---|\n",
+                "| No greeting or introduction | Greeting / Opening script |\n",
+                "| No verification of customer identity | Identity & security protocol |\n",
+                "| No attempt to address customer concerns | Active listening & information accuracy |\n",
+                "| No regulatory disclosures or compliance protocols | Regulatory & compliance training |\n",
+                "| Missing mandatory disclosures | Disclosure checklist adherence |\n",
+                "| Non-compliant language used | Language & tone guidance |\n",
+                "| No empathy or validation of customer feelings | Empathy & emotional intelligence |\n",
+                "\n",
+                "_Sourced from `compliance_flags` field in `gold_enriched_calls` via `contact_center_qa_agent` evaluation_"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "section_agents",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Agent Coaching Priority (Flagged Calls Only)"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "card_agent_002",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🔴 agent_002\n",
+                "**82 flagged** — 34% of all reviews\n",
+                "\n",
+                "| Criterion | Avg (flagged) |\n",
+                "|---|---|\n",
+                "| Greeting | 1.00 |\n",
+                "| Empathy | 1.00 |\n",
+                "| Accuracy | 1.15 |\n",
+                "| Escalation | 1.00 |\n",
+                "| Compliance | 1.00 |\n",
+                "| **Overall** | **1.13** |\n",
+                "\n",
+                "_Priority: Greeting, Empathy, Compliance scripting_"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 4,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "card_agent_000",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🔴 agent_000\n",
+                "**73 flagged** — 31% of all reviews\n",
+                "\n",
+                "| Criterion | Avg (flagged) |\n",
+                "|---|---|\n",
+                "| Greeting | 1.03 |\n",
+                "| Empathy | 1.04 |\n",
+                "| Accuracy | 1.14 |\n",
+                "| Escalation | 1.03 |\n",
+                "| Compliance | 1.03 |\n",
+                "| **Overall** | **1.08** |\n",
+                "\n",
+                "_Priority: Accuracy information quality & compliance_"
+              ]
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 21,
+            "width": 4,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "card_agent_004",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🟠 agent_004\n",
+                "**41 flagged** — 17% of all reviews\n",
+                "\n",
+                "| Criterion | Avg (flagged) |\n",
+                "|---|---|\n",
+                "| Greeting | 1.00 |\n",
+                "| Empathy | 1.00 |\n",
+                "| Accuracy | 1.05 |\n",
+                "| Escalation | 1.00 |\n",
+                "| Compliance | 1.00 |\n",
+                "| **Overall** | **1.02** |\n",
+                "\n",
+                "_Lowest avg QA score of flagged calls — full rubric review recommended_"
+              ]
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 21,
+            "width": 4,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "card_agent_005",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🟡 agent_005\n",
+                "**35 flagged** — 15% of all reviews\n",
+                "\n",
+                "| Criterion | Avg (flagged) |\n",
+                "|---|---|\n",
+                "| Greeting | 1.00 |\n",
+                "| Empathy | 1.00 |\n",
+                "| Accuracy | 1.06 |\n",
+                "| Escalation | 1.00 |\n",
+                "| Compliance | 1.00 |\n",
+                "| **Overall** | **1.03** |\n",
+                "\n",
+                "_Focus: Accuracy and information consistency_"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 28,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "card_agent_008",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### 🟢 agent_008\n",
+                "**8 flagged** — 3% of all reviews\n",
+                "\n",
+                "| Criterion | Avg (flagged) |\n",
+                "|---|---|\n",
+                "| Greeting | 1.00 |\n",
+                "| Empathy | 1.00 |\n",
+                "| Accuracy | **2.00** |\n",
+                "| Escalation | 1.00 |\n",
+                "| Compliance | 1.00 |\n",
+                "| **Overall** | **1.50** |\n",
+                "\n",
+                "✅ Lowest review volume. Accuracy scores on flagged calls notably higher — suggests non-compliance issues rather than knowledge gaps."
+              ]
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 28,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "section_table",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Flagged Call Detail — Worst 100 by QA Score"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 35,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "table_flagged_detail",
             "queries": [
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "ds_sentiment_by_category",
+                  "datasetName": "ds_flagged",
                   "fields": [
                     {
-                      "name": "sentiment",
-                      "expression": "`sentiment`"
+                      "name": "call_id",
+                      "expression": "`call_id`"
+                    },
+                    {
+                      "name": "agent_id",
+                      "expression": "`agent_id`"
                     },
                     {
                       "name": "call_category",
                       "expression": "`call_category`"
                     },
                     {
-                      "name": "call_count",
-                      "expression": "`call_count`"
+                      "name": "overall_qa_score",
+                      "expression": "`overall_qa_score`"
+                    },
+                    {
+                      "name": "compliance_flags",
+                      "expression": "`compliance_flags`"
+                    },
+                    {
+                      "name": "coaching_notes",
+                      "expression": "`coaching_notes`"
                     }
                   ],
                   "disaggregated": true
@@ -861,34 +1609,39 @@
               }
             ],
             "spec": {
-              "version": 3,
+              "version": 2,
               "frame": {
-                "title": "Call Count by Category & Sentiment",
+                "title": "Flagged Calls Detail Table",
                 "showTitle": true
               },
-              "mark": {
-                "layout": "stack"
-              },
-              "widgetType": "bar",
+              "widgetType": "table",
               "encodings": {
-                "x": {
-                  "fieldName": "call_category",
-                  "scale": {
-                    "type": "categorical"
+                "columns": [
+                  {
+                    "fieldName": "call_id",
+                    "displayName": "Call ID"
+                  },
+                  {
+                    "fieldName": "agent_id",
+                    "displayName": "Agent"
+                  },
+                  {
+                    "fieldName": "call_category",
+                    "displayName": "Category"
+                  },
+                  {
+                    "fieldName": "overall_qa_score",
+                    "displayName": "QA Score"
+                  },
+                  {
+                    "fieldName": "compliance_flags",
+                    "displayName": "Compliance Flags"
+                  },
+                  {
+                    "fieldName": "coaching_notes",
+                    "displayName": "Coaching Notes"
                   }
-                },
-                "y": {
-                  "fieldName": "call_count",
-                  "scale": {
-                    "type": "quantitative"
-                  }
-                },
-                "color": {
-                  "fieldName": "sentiment",
-                  "scale": {
-                    "type": "categorical"
-                  }
-                }
+                ]
               },
               "data": {
                 "queryName": "main_query"
@@ -897,135 +1650,36 @@
           },
           "position": {
             "x": 0,
-            "y": 3,
-            "width": 6,
-            "height": 6
+            "y": 36,
+            "width": 12,
+            "height": 8
           }
         },
         {
           "widget": {
-            "name": "section_queue_criteria",
+            "name": "genie_link_p3",
             "multilineTextboxSpec": {
               "lines": [
-                "## QA Score by Queue & Criterion"
+                "## 💬 Ask Questions with Natural Language\n",
+                "\n",
+                "Explore flagged call details interactively using the **[Contact Center QA Analytics Genie Space](https://e2-demo-field-eng.cloud.databricks.com/genie/rooms/01f165553d7c1e42912a2dba295d3006)**. Ask questions like:\n",
+                "* *\"Show me all flagged Technical calls for agent_002 with QA score below 1.5\"*\n",
+                "* *\"Which agents have the most compliance flags related to missing disclosures?\"*\n",
+                "* *\"List the top 10 worst-scoring calls with their coaching notes\"*\n",
+                "* *\"How many flagged calls mention empathy as a compliance failure?\"*"
               ]
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 9,
-            "width": 6,
-            "height": 1
-          }
-        },
-        {
-          "widget": {
-            "name": "bar_greeting_queue",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "ds_queue_perf",
-                  "fields": [
-                    {
-                      "name": "queue_type",
-                      "expression": "`queue_type`"
-                    },
-                    {
-                      "name": "avg_greeting",
-                      "expression": "`avg_greeting`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 3,
-              "frame": {
-                "title": "Avg Greeting Score by Queue",
-                "showTitle": true
-              },
-              "widgetType": "bar",
-              "encodings": {
-                "x": {
-                  "fieldName": "queue_type",
-                  "scale": {
-                    "type": "categorical"
-                  }
-                },
-                "y": {
-                  "fieldName": "avg_greeting",
-                  "scale": {
-                    "type": "quantitative"
-                  }
-                }
-              },
-              "data": {
-                "queryName": "main_query"
+            },
+            "specExtensions": {
+              "widgetBackgroundColor": {
+                "dark": "#3E1D1D"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 10,
-            "width": 3,
-            "height": 5
-          }
-        },
-        {
-          "widget": {
-            "name": "bar_compliance_queue",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "ds_queue_perf",
-                  "fields": [
-                    {
-                      "name": "queue_type",
-                      "expression": "`queue_type`"
-                    },
-                    {
-                      "name": "avg_compliance",
-                      "expression": "`avg_compliance`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 3,
-              "frame": {
-                "title": "Avg Compliance Score by Queue",
-                "showTitle": true
-              },
-              "widgetType": "bar",
-              "encodings": {
-                "x": {
-                  "fieldName": "queue_type",
-                  "scale": {
-                    "type": "categorical"
-                  }
-                },
-                "y": {
-                  "fieldName": "avg_compliance",
-                  "scale": {
-                    "type": "quantitative"
-                  }
-                }
-              },
-              "data": {
-                "queryName": "main_query"
-              }
-            }
-          },
-          "position": {
-            "x": 3,
-            "y": 10,
-            "width": 3,
-            "height": 5
+            "y": 44,
+            "width": 12,
+            "height": 3
           }
         }
       ],
@@ -1036,102 +1690,35 @@
   "uiSettings": {
     "theme": {
       "canvasBackgroundColor": {
-        "light": "#FFFFFF",
-        "dark": "#FFFFFF"
+        "light": "#F4F2ED",
+        "dark": "#1F1E1D"
       },
       "widgetBackgroundColor": {
-        "light": "#FFFFFF",
-        "dark": "#FFFFFF"
+        "light": "#EBE9E2",
+        "dark": "#1B1817"
       },
       "widgetBorderColor": {
-        "light": "#94A3B8",
-        "dark": "#94A3B8"
+        "light": "#D5CEC3",
+        "dark": "#2F2E2B"
       },
       "fontColor": {
-        "light": "#111827",
-        "dark": "#111827"
+        "light": "#3D3C39",
+        "dark": "#FAFBF9"
       },
       "selectionColor": {
-        "light": "#1D4ED8",
-        "dark": "#1D4ED8"
+        "light": "#5F7E52",
+        "dark": "#7A8F3E"
       },
       "visualizationColors": [
-        "#1D4ED8",
-        "#059669",
-        "#D97706",
-        "#DC2626",
-        "#7C3AED",
-        "#0891B2",
-        "#65A30D",
-        "#E11D48"
+        "#1A4F27",
+        "#B35900",
+        "#3A9BDC",
+        "#7A8F3E",
+        "#E8B200",
+        "#767676",
+        "#C23B22"
       ],
-      "widgetHeaderAlignment": "LEFT",
-      "fontFamily": "Inter",
-      "textBoxVerticalAlign": "VERTICAL_ALIGN_TOP",
-      "widgetPadding": 16,
-      "widgetMargin": 8,
-      "widgetCornerRadius": 12,
-      "widgetShadow": 10,
-      "fontSettings": {
-        "base": {
-          "fontFamily": "Inter",
-          "textCase": "TEXT_CASE_UNSPECIFIED",
-          "fontColor": {
-            "light": "#111827",
-            "dark": "#111827"
-          },
-          "fontSize": 13,
-          "fontWeight": 500
-        },
-        "widgetTitle": {
-          "fontFamily": "Inter",
-          "textCase": "TEXT_CASE_UNSPECIFIED",
-          "fontColor": {
-            "light": "#111827",
-            "dark": "#111827"
-          },
-          "fontSize": 18,
-          "fontWeight": 700
-        },
-        "widgetDescription": {
-          "fontFamily": "Inter",
-          "textCase": "TEXT_CASE_UNSPECIFIED",
-          "fontColor": {
-            "light": "#374151",
-            "dark": "#374151"
-          },
-          "fontSize": 12,
-          "fontWeight": 500
-        },
-        "fieldTitle": {
-          "fontFamily": "Inter",
-          "textCase": "TEXT_CASE_UPPERCASE",
-          "fontColor": {
-            "light": "#111827",
-            "dark": "#111827"
-          },
-          "fontSize": 12,
-          "fontWeight": 700
-        },
-        "fieldValue": {
-          "fontFamily": "Inter",
-          "textCase": "TEXT_CASE_UNSPECIFIED",
-          "fontColor": {
-            "light": "#111827",
-            "dark": "#111827"
-          },
-          "fontSize": 16,
-          "fontWeight": 800
-        }
-      },
-      "gridLineColor": {
-        "light": "#CBD5E1",
-        "dark": "#CBD5E1"
-      },
-      "axisLineColor": {
-        "light": "#475569",
-        "dark": "#475569"
-      }
+      "widgetHeaderAlignment": "LEFT"
     },
     "applyModeEnabled": false
   }
