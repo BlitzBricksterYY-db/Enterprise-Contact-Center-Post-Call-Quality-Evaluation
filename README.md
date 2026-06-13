@@ -1,6 +1,6 @@
-# Higher Education Advisory Services — AI Agent Pipeline
+# Enterprise Contact Center — Post-Call Quality Evaluation
 
-An AI-powered quality analysis agent for higher education call centers, built on Databricks with Unity Catalog, LangGraph, and MLflow.
+An AI-powered quality evaluation system for enterprise contact centers, built on Databricks with Unity Catalog, LangGraph, and MLflow. Automatically scores every call against a configurable QA rubric, surfaces compliance risks, and identifies coaching opportunities at scale.
 
 ## What It Does
 
@@ -25,22 +25,27 @@ Interact with the agent through natural language:
 |                     DATA FLOW (Medallion)                         |
 |                                                                   |
 |   Audio Files (.wav)         UC Volume                            |
-|        |                     /Volumes/.../audio/                   |
+|   Call Transcripts           /Volumes/.../calls/                  |
+|        |                                                          |
 |        v                                                          |
 |   +----------+                                                    |
-|   |  BRONZE  |  Auto Loader -> file metadata                     |
+|   |  BRONZE  |  Auto Loader -> call metadata (agent_id,          |
+|   |          |  call_duration, queue_type, call_id)               |
 |   +----+-----+                                                    |
 |        v                                                          |
 |   +----------+                                                    |
-|   |  SILVER  |  Whisper large-v3 -> text transcriptions          |
+|   |  SILVER  |  Whisper STT -> transcriptions + metadata          |
 |   +----+-----+                                                    |
 |        v                                                          |
 |   +----------+                                                    |
-|   |   GOLD   |  LLM enrichment -> sentiment, topics,            |
-|   |          |  call category, rubric scores (1-5)               |
+|   |   GOLD   |  LLM evaluation -> QA scores (1-5),              |
+|   |          |  compliance flags, sentiment, coaching notes       |
 |   +----+-----+                                                    |
-|        v                                                          |
-|   AI Agent Endpoint  <->  AI Playground / REST API / Genie       |
+|        |                                                          |
+|        +----> QA Scoring Dashboard (supervisors)                  |
+|        +----> AI Agent Endpoint (natural language queries)         |
+|        +----> Genie Space (business analysts)                     |
+|        +----> AI Skill (reusable sentiment/scoring API)           |
 +------------------------------------------------------------------+
 ```
 
@@ -75,13 +80,15 @@ Interact with the agent through natural language:
 
 ## Quick Start
 
-Run the three notebooks in order:
+Run notebooks in order:
 
 | Step | Notebook | Time | What It Does |
 |------|----------|------|-------------|
-| 1 | `01_setup.py` | ~3 min | Creates schema, tables, rubric data, and 12 SQL UC functions |
-| 2 | `02_deploy.py` | ~15 min | Ingests audio metadata, packages agent, deploys as REST endpoint |
-| 3 | `03_test.py` | ~5 min | Runs 40+ E2E tests (pre-deploy + post-deploy) |
+| 1 | `01_setup` | ~3 min | Creates schema, tables, QA rubric, and UC functions |
+| 2 | `02_deploy` | ~15 min | Ingests call data, packages agent, deploys serving endpoint |
+| 3 | `03_test` | ~5 min | Runs E2E tests (pre-deploy + post-deploy) |
+| 4 | `04_dashboard` | ~5 min | Creates QA scoring dashboard for supervisors |
+| 5 | `05_genie_ai_skill` | ~3 min | Sets up Genie Space + reusable AI Skill |
 
 ### Step 1: Setup
 
@@ -214,15 +221,15 @@ After calls are transcribed and enriched, create a Genie Space with the `gold_en
 | `rubric_assessment` | STRING | Narrative assessment |
 | `improvement_areas` | STRING | Suggested improvements |
 
-### Advisor Rubric
+### QA Rubric (Configurable Checklist)
 
-| Criterion | Weight | Score 1 (Poor) | Score 5 (Excellent) |
+| Criterion | Weight | Score 1 (Fail) | Score 5 (Excellent) |
 |-----------|--------|----------------|---------------------|
-| Greeting & Identification | 15% | No greeting | Warm greeting; confirms name, ID, reason |
-| Active Listening | 20% | Interrupts; ignores | Paraphrases; clarifying questions |
-| Accurate Information | 25% | Incorrect info | Fully accurate with citations |
-| Empathy & Tone | 20% | Dismissive | Warm, empathetic, validates feelings |
-| Resolution & Next Steps | 20% | No resolution | Full resolution with deadlines |
+| Proper Greeting & ID Verification | 15% | No greeting; no ID check | Warm greeting; full identity verification; states name & dept |
+| Empathy & Active Listening | 20% | Dismissive; interrupts | Validates feelings; paraphrases; clarifying questions |
+| Accurate Information Provided | 25% | Incorrect/misleading info given | Fully accurate; cites policy/documentation; confirms understanding |
+| Escalation Protocol Adherence | 20% | Failed to escalate when needed | Correctly identifies escalation triggers; follows protocol; warm transfer |
+| Compliance & Required Disclosures | 20% | Missed mandatory disclosures | All required disclosures given; regulatory language correct; proper consent |
 
 ## Troubleshooting
 

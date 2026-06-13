@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Higher Education Advisory Services — AI Agent Pipeline
+# MAGIC # Enterprise Contact Center — Post-Call Quality Evaluation
 # MAGIC
 # MAGIC ## Complete Setup & User Guide
 # MAGIC
@@ -8,14 +8,15 @@
 # MAGIC
 # MAGIC ### What This Project Does
 # MAGIC
-# MAGIC This project deploys an **AI-powered quality analysis agent** for a higher education call center.
+# MAGIC This project deploys an **AI-powered post-call quality evaluation agent** for enterprise contact centers.
 # MAGIC The agent can:
 # MAGIC
-# MAGIC - **Find** audio recordings of student advisory calls (financial aid, admissions, enrollment, etc.)
+# MAGIC - **Ingest** call recordings or transcripts (audio files, pre-existing transcripts, or both)
 # MAGIC - **Transcribe** calls using OpenAI Whisper large-v3 speech recognition
-# MAGIC - **Analyze** transcripts with AI: sentiment analysis, topic extraction, intent classification, call categorization
-# MAGIC - **Score** advisor performance against a weighted 5-criterion rubric using RAG (Retrieval-Augmented Generation)
-# MAGIC - **Report** on pipeline status (how many files transcribed, how many enriched)
+# MAGIC - **Score** agent performance against a configurable QA checklist (greeting, empathy, accuracy, escalation, compliance)
+# MAGIC - **Analyze** transcripts with AI: sentiment analysis, topic extraction, compliance flagging
+# MAGIC - **Flag** outliers and calls requiring human review
+# MAGIC - **Report** via a supervisor dashboard with agent rankings, trends, and coaching recommendations
 # MAGIC
 # MAGIC You interact with the agent through **natural language** -- just ask it questions like:
 # MAGIC - *"What audio files are available?"*
