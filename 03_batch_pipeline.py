@@ -5,7 +5,7 @@
 # ///
 # DBTITLE 1,Header
 # MAGIC %md
-# MAGIC # 04 — Batch Pipeline: Bronze → Silver → Gold → VS Index Sync
+# MAGIC # 03 — Batch Pipeline: Bronze → Silver → Gold → VS Index Sync
 # MAGIC
 # MAGIC This notebook populates the Delta tables that power dashboards, the VS index, and `03_test` data-quality checks.
 # MAGIC The deployed agent handles **on-demand** single-call analysis; this pipeline handles **bulk** processing.

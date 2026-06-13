@@ -372,7 +372,6 @@ print("\nLocal smoke tests passed.")
 # COMMAND ----------
 
 # DBTITLE 1,Log Model with Resources
-
 import mlflow
 mlflow.set_registry_uri("databricks-uc")
 
